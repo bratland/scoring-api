@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
 import { PipedriveClient, extractOrgId } from '$lib/pipedrive/client';
 import { calculateScore, type PersonInput, type CompanyInput } from '$lib/scoring/scorer';
@@ -6,11 +7,10 @@ import { SCORING_CONFIG } from '$lib/scoring/config';
 
 interface ScorePipedriveRequest {
 	person_id: number;
-	api_token: string;
-	tier_field_key?: string; // Custom field key for storing tier (e.g., "lead_tier")
-	score_field_key?: string; // Custom field key for storing score
+	api_token?: string; // Optional - uses env var if not provided
+	tier_field_key?: string;
+	score_field_key?: string;
 	field_mapping?: {
-		// Map Pipedrive field keys to scoring inputs
 		functions?: string;
 		relationship_strength?: string;
 		revenue?: string;
@@ -19,6 +19,10 @@ interface ScorePipedriveRequest {
 		industry?: string;
 	};
 }
+
+// Default field keys for this Pipedrive instance
+const DEFAULT_TIER_FIELD_KEY = '89c2b747b8d3f93a35ad244ac66444415300ae68';
+const DEFAULT_SCORE_FIELD_KEY = 'c93c9446c16874d8eb9464e1cf1215ee3ae26a80';
 
 const DEFAULT_FIELD_MAPPING = {
 	functions: 'Functions',
@@ -29,13 +33,21 @@ const DEFAULT_FIELD_MAPPING = {
 	industry: 'Bransch SE'
 };
 
+function validateApiKey(request: Request): boolean {
+	const apiKey = env.SCORING_API_KEY;
+	if (!apiKey) return true; // No API key configured = allow all
+
+	const providedKey = request.headers.get('x-api-key') ||
+	                    request.headers.get('authorization')?.replace('Bearer ', '');
+
+	return providedKey === apiKey;
+}
+
 function findFieldValue(obj: Record<string, unknown>, fieldName: string): unknown {
-	// Try exact match first
 	if (fieldName in obj) {
 		return obj[fieldName];
 	}
 
-	// Try case-insensitive match on field names
 	for (const [key, value] of Object.entries(obj)) {
 		if (key.toLowerCase() === fieldName.toLowerCase()) {
 			return value;
@@ -59,26 +71,36 @@ function parseFunctions(value: unknown): string[] {
 	if (!value) return [];
 	if (Array.isArray(value)) return value.map(String);
 	if (typeof value === 'string') {
-		// Could be comma-separated or a single value
 		return value.split(',').map(s => s.trim()).filter(Boolean);
 	}
 	return [];
 }
 
 export const POST: RequestHandler = async ({ request }) => {
+	// Validate API key
+	if (!validateApiKey(request)) {
+		return json({ error: 'Invalid or missing API key' }, { status: 401 });
+	}
+
 	try {
 		const body: ScorePipedriveRequest = await request.json();
 
-		// Validate required fields
 		if (!body.person_id) {
 			return json({ error: 'Missing person_id' }, { status: 400 });
 		}
-		if (!body.api_token) {
-			return json({ error: 'Missing api_token' }, { status: 400 });
+
+		// Use provided token or fall back to environment variable
+		const apiToken = body.api_token || env.PIPEDRIVE_API_TOKEN;
+		if (!apiToken) {
+			return json({ error: 'No Pipedrive API token available' }, { status: 400 });
 		}
 
-		const client = new PipedriveClient({ apiToken: body.api_token });
+		const client = new PipedriveClient({ apiToken });
 		const fieldMapping = { ...DEFAULT_FIELD_MAPPING, ...body.field_mapping };
+
+		// Use default field keys if not provided
+		const tierFieldKey = body.tier_field_key || DEFAULT_TIER_FIELD_KEY;
+		const scoreFieldKey = body.score_field_key || DEFAULT_SCORE_FIELD_KEY;
 
 		// Fetch person data
 		const personResult = await client.getPerson(body.person_id);
@@ -125,21 +147,13 @@ export const POST: RequestHandler = async ({ request }) => {
 		const scoreResult = calculateScore(personInput, companyInput);
 
 		// Prepare update payload
-		const updates: Record<string, unknown> = {};
+		const updates: Record<string, unknown> = {
+			[tierFieldKey]: scoreResult.tier,
+			[scoreFieldKey]: scoreResult.combined_score
+		};
 
-		if (body.tier_field_key) {
-			updates[body.tier_field_key] = scoreResult.tier;
-		}
-
-		if (body.score_field_key) {
-			updates[body.score_field_key] = scoreResult.combined_score;
-		}
-
-		// Update person in Pipedrive if we have fields to update
-		let updateResult = null;
-		if (Object.keys(updates).length > 0) {
-			updateResult = await client.updatePerson(body.person_id, updates);
-		}
+		// Update person in Pipedrive
+		const updateResult = await client.updatePerson(body.person_id, updates);
 
 		return json({
 			success: true,
@@ -147,13 +161,10 @@ export const POST: RequestHandler = async ({ request }) => {
 			person_name: person.name,
 			organization_name: organization?.name || null,
 			scoring: scoreResult,
-			pipedrive_update: updateResult ? {
+			pipedrive_update: {
 				success: updateResult.success,
 				error: updateResult.error,
 				fields_updated: Object.keys(updates)
-			} : {
-				skipped: true,
-				reason: 'No tier_field_key or score_field_key provided'
 			},
 			data_used: {
 				person: personInput,
@@ -173,31 +184,26 @@ export const POST: RequestHandler = async ({ request }) => {
 	}
 };
 
-// GET endpoint to help discover field mappings
-export const GET: RequestHandler = async ({ url }) => {
-	const apiToken = url.searchParams.get('api_token');
+// GET endpoint for health check and usage info
+export const GET: RequestHandler = async ({ request, url }) => {
+	// API key not required for GET (documentation endpoint)
+
+	const apiToken = url.searchParams.get('api_token') || env.PIPEDRIVE_API_TOKEN;
 
 	if (!apiToken) {
 		return json({
 			description: 'Pipedrive scoring endpoint',
 			usage: {
 				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'x-api-key': 'your-scoring-api-key'
+				},
 				body: {
-					person_id: 12345,
-					api_token: 'your-pipedrive-api-token',
-					tier_field_key: 'abc123hash', // Custom field key for tier
-					score_field_key: 'def456hash', // Custom field key for score
-					field_mapping: {
-						functions: 'Functions',
-						relationship_strength: 'Relationship Strength',
-						revenue: 'Omsättning',
-						cagr_3y: 'CAGR 3Y',
-						score: 'Score',
-						industry: 'Bransch SE'
-					}
-				}
-			},
-			tip: 'Add ?api_token=xxx to discover your Pipedrive field keys'
+					person_id: 12345
+				},
+				note: 'Pipedrive API token and field keys are pre-configured'
+			}
 		});
 	}
 
@@ -221,7 +227,11 @@ export const GET: RequestHandler = async ({ url }) => {
 			name: f.name,
 			type: f.field_type
 		})) : [],
-		suggested_mapping: DEFAULT_FIELD_MAPPING,
+		configured_defaults: {
+			tier_field_key: DEFAULT_TIER_FIELD_KEY,
+			score_field_key: DEFAULT_SCORE_FIELD_KEY,
+			field_mapping: DEFAULT_FIELD_MAPPING
+		},
 		scoring_config: {
 			role_scores: SCORING_CONFIG.roleScores,
 			relationship_scores: SCORING_CONFIG.relationshipScores
