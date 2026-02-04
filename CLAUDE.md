@@ -13,11 +13,10 @@ npm run check    # Type checking
 ## Environment Variables
 
 ```bash
-PIPEDRIVE_API_TOKEN=     # Pipedrive API token
-SCORING_API_KEY=         # API key for auth
-TIC_API_KEY=             # TIC.io API key
-KV_REST_API_URL=         # Upstash Redis URL
-KV_REST_API_TOKEN=       # Upstash Redis token
+TARGET_PIPEDRIVE_API_TOKEN=  # Pipedrive API token
+SCORING_API_KEY=             # API key for auth (optional)
+TIC_API_KEY=                 # TIC.io API key for company enrichment
+PERPLEXITY_API_KEY=          # Perplexity API for role detection
 ```
 
 ## Rate Limiting
@@ -72,7 +71,11 @@ Rate limit state is updated from response headers:
 
 ## Pages
 
-- `/` - Dashboard with scoring test and API documentation
+- `/` - Dashboard with navigation and scoring test
+- `/customers` - View all organizations with TIC enrichment data
+- `/persons` - View all contact persons with scores
+- `/icp` - ICP Editor for configuring scoring weights
+- `/docs` - API documentation
 - `/analysis` - Analysis dashboard with scoring overview and engagement analytics
 
 ## TIC.io Integration
@@ -155,6 +158,9 @@ Edit `src/lib/scoring/config.ts` to adjust:
 Configured for Vercel. Environment variables must be set in Vercel dashboard.
 
 Required Vercel env vars:
-- `PIPEDRIVE_API_TOKEN`
-- `SCORING_API_KEY`
+- `TARGET_PIPEDRIVE_API_TOKEN`
 - `TIC_API_KEY`
+- `PERPLEXITY_API_KEY`
+
+Optional:
+- `SCORING_API_KEY` (enables API authentication)
