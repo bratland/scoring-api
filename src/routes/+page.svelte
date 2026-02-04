@@ -39,7 +39,7 @@
 		</div>
 
 		<!-- Navigation Cards -->
-		<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+		<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
 			<a href="/customers" class="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow border-l-4 border-blue-500">
 				<div class="flex items-center gap-4">
 					<div class="text-4xl">🏢</div>
@@ -66,6 +66,16 @@
 					<div>
 						<h2 class="text-xl font-semibold text-gray-900">ICP Editor</h2>
 						<p class="text-gray-600">Konfigurera scoring</p>
+					</div>
+				</div>
+			</a>
+
+			<a href="/docs" class="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow border-l-4 border-orange-500">
+				<div class="flex items-center gap-4">
+					<div class="text-4xl">📚</div>
+					<div>
+						<h2 class="text-xl font-semibold text-gray-900">API Docs</h2>
+						<p class="text-gray-600">API-dokumentation</p>
 					</div>
 				</div>
 			</a>
