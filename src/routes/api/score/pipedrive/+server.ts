@@ -12,9 +12,27 @@ interface ScorePipedriveRequest {
 	person_id: number;
 }
 
-// Default field keys for updating Pipedrive
-const DEFAULT_TIER_FIELD_KEY = '5a4962a2b5338ec996e6807300212e9d2763be1c';  // "Lead Tier"
-const DEFAULT_SCORE_FIELD_KEY = '49ee51d1e5e397fca73c124dde367245ee79783f'; // "Lead Score"
+// Field keys cache (populated on first request)
+let cachedPersonFieldKeys: { tierKey?: string; scoreKey?: string } | null = null;
+
+async function getPersonFieldKeys(client: PipedriveClient): Promise<{ tierKey?: string; scoreKey?: string }> {
+	if (cachedPersonFieldKeys) return cachedPersonFieldKeys;
+
+	const fieldsResult = await client.getPersonFields();
+	if (!fieldsResult.success || !fieldsResult.data) {
+		return {};
+	}
+
+	const keys: { tierKey?: string; scoreKey?: string } = {};
+	for (const field of fieldsResult.data) {
+		const lowerName = field.name.toLowerCase();
+		if (lowerName === 'lead tier') keys.tierKey = field.key;
+		if (lowerName === 'lead score') keys.scoreKey = field.key;
+	}
+
+	cachedPersonFieldKeys = keys;
+	return keys;
+}
 
 // Cache field mapping to avoid fetching on every request
 let cachedFieldMapping: TicFieldMapping | null = null;
@@ -245,12 +263,16 @@ export const POST: RequestHandler = async ({ request }) => {
 		// ─────────────────────────────────────────────────────────────
 		// 7. Update Pipedrive with tier and score
 		// ─────────────────────────────────────────────────────────────
-		const updates: Record<string, unknown> = {
-			[DEFAULT_TIER_FIELD_KEY]: scoreResult.tier,
-			[DEFAULT_SCORE_FIELD_KEY]: Math.round(scoreResult.combined_score)
-		};
+		const fieldKeys = await getPersonFieldKeys(client);
+		let updateResult = { success: false, error: 'No field keys found' };
 
-		const updateResult = await client.updatePerson(body.person_id, updates);
+		if (fieldKeys.tierKey && fieldKeys.scoreKey) {
+			const updates: Record<string, unknown> = {
+				[fieldKeys.tierKey]: scoreResult.tier,
+				[fieldKeys.scoreKey]: Math.round(scoreResult.combined_score)
+			};
+			updateResult = await client.updatePerson(body.person_id, updates);
+		}
 
 		// ─────────────────────────────────────────────────────────────
 		// 8. Return clean response (no mention of TIC/Perplexity)
