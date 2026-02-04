@@ -47,7 +47,7 @@
 		</div>
 
 		<!-- Navigation Cards -->
-		<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-16">
+		<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-5 mb-16">
 			<a href="/customers" class="group bg-white rounded-2xl p-6 border border-navy/10 hover:border-navy/20 hover:shadow-lg transition-all duration-200">
 				<div class="w-12 h-12 bg-lime/20 rounded-xl flex items-center justify-center mb-4 group-hover:bg-lime/30 transition-colors">
 					<svg class="w-6 h-6 text-navy" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -66,6 +66,16 @@
 				</div>
 				<h2 class="text-lg font-semibold text-navy mb-1">Personer</h2>
 				<p class="text-navy/60 text-sm">Se alla kontaktpersoner</p>
+			</a>
+
+			<a href="/analytics" class="group bg-white rounded-2xl p-6 border border-navy/10 hover:border-navy/20 hover:shadow-lg transition-all duration-200">
+				<div class="w-12 h-12 bg-lime/20 rounded-xl flex items-center justify-center mb-4 group-hover:bg-lime/30 transition-colors">
+					<svg class="w-6 h-6 text-navy" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+					</svg>
+				</div>
+				<h2 class="text-lg font-semibold text-navy mb-1">Analytics</h2>
+				<p class="text-navy/60 text-sm">ICP & Säljarinsikter</p>
 			</a>
 
 			<a href="/icp" class="group bg-white rounded-2xl p-6 border border-navy/10 hover:border-navy/20 hover:shadow-lg transition-all duration-200">

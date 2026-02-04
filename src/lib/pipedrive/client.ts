@@ -70,6 +70,41 @@ export interface PipedriveUser {
 	email: string;
 }
 
+export interface PipedriveDeal {
+	id: number;
+	title: string;
+	value: number;
+	currency: string;
+	status: 'open' | 'won' | 'lost' | 'deleted';
+	user_id: number | { id: number; name?: string } | null;
+	person_id: number | { value: number; name?: string } | null;
+	org_id: number | { value: number; name?: string } | null;
+	pipeline_id: number;
+	stage_id: number;
+	add_time: string;
+	won_time: string | null;
+	lost_time: string | null;
+	close_time: string | null;
+	expected_close_date: string | null;
+	[key: string]: unknown;
+}
+
+export interface PipedrivePipeline {
+	id: number;
+	name: string;
+	active: boolean;
+	order_nr: number;
+	deal_probability: boolean;
+}
+
+export interface PipedriveStage {
+	id: number;
+	name: string;
+	pipeline_id: number;
+	order_nr: number;
+	active_flag: boolean;
+}
+
 interface PipedriveApiResponse<T> {
 	success: boolean;
 	data: T | null;
@@ -376,6 +411,70 @@ export class PipedriveClient {
 		}
 
 		return items;
+	}
+
+	async getAllDeals(): Promise<PipedriveDeal[]> {
+		const items: PipedriveDeal[] = [];
+		let start = 0;
+		const limit = 500;
+
+		while (true) {
+			const result = await this.requestPaginated<PipedriveDeal>(
+				`/deals?limit=${limit}&start=${start}`
+			);
+
+			if (!result.success || !result.data) {
+				break;
+			}
+
+			items.push(...result.data);
+
+			if (!result.additional_data?.pagination?.more_items_in_collection) {
+				break;
+			}
+
+			start = result.additional_data.pagination.next_start ?? start + limit;
+		}
+
+		return items;
+	}
+
+	async getDealsByStatus(status: 'open' | 'won' | 'lost' | 'all_not_deleted'): Promise<PipedriveDeal[]> {
+		const items: PipedriveDeal[] = [];
+		let start = 0;
+		const limit = 500;
+
+		while (true) {
+			const result = await this.requestPaginated<PipedriveDeal>(
+				`/deals?status=${status}&limit=${limit}&start=${start}`
+			);
+
+			if (!result.success || !result.data) {
+				break;
+			}
+
+			items.push(...result.data);
+
+			if (!result.additional_data?.pagination?.more_items_in_collection) {
+				break;
+			}
+
+			start = result.additional_data.pagination.next_start ?? start + limit;
+		}
+
+		return items;
+	}
+
+	async getPipelines(): Promise<PipedriveResponse<PipedrivePipeline[]>> {
+		return this.request<PipedrivePipeline[]>('/pipelines');
+	}
+
+	async getStages(): Promise<PipedriveResponse<PipedriveStage[]>> {
+		return this.request<PipedriveStage[]>('/stages');
+	}
+
+	async getStagesByPipeline(pipelineId: number): Promise<PipedriveResponse<PipedriveStage[]>> {
+		return this.request<PipedriveStage[]>(`/stages?pipeline_id=${pipelineId}`);
 	}
 }
 
