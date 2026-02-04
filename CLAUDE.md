@@ -1,6 +1,6 @@
-# Scoring API
+# Scoring Engine
 
-Lead scoring service for persons and companies. Calculates Gold/Silver/Bronze tiers.
+Lead scoring service for persons and companies with TIC.io enrichment.
 
 ## Commands
 
@@ -14,49 +14,42 @@ npm run check    # Type checking
 
 ```bash
 PIPEDRIVE_API_TOKEN=     # Pipedrive API token
-SCORING_API_KEY=         # API key for authenticating requests
-TIC_API_KEY=             # TIC.io API key for company data enrichment
-KV_REST_API_URL=         # Upstash Redis URL (from Vercel KV)
-KV_REST_API_TOKEN=       # Upstash Redis token (from Vercel KV)
+SCORING_API_KEY=         # API key for auth
+TIC_API_KEY=             # TIC.io API key
+KV_REST_API_URL=         # Upstash Redis URL
+KV_REST_API_TOKEN=       # Upstash Redis token
 ```
+
+## Rate Limiting
+
+The Pipedrive client includes built-in rate limiting:
+- 80 requests per 2 seconds (Pipedrive limit)
+- Minimum 50ms between requests
+- Automatic backoff on 429 (2100ms)
+- Max 3 retries with exponential backoff
+
+Rate limit state is updated from response headers:
+- `x-ratelimit-remaining`
+- `x-ratelimit-reset`
 
 ## API Endpoints
 
-### POST /api/score/pipedrive
-Score a person from Pipedrive and update their record.
+### Scoring
 
-```json
-{
-  "person_id": 12345,
-  "api_token": "optional-override"
-}
-```
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/score/pipedrive` | POST | Score person from Pipedrive and update record |
+| `/api/score/person` | POST | Score single person with company context |
+| `/api/score/bulk` | POST | Score multiple persons (max 1000) |
+| `/api/score/config` | GET | View scoring configuration |
 
-### POST /api/score/person
-Score a single person with company context.
+### Analysis
 
-```json
-{
-  "person": {
-    "functions": ["CEO", "Sales"],
-    "relationship_strength": "We know each other",
-    "activities_90d": 10
-  },
-  "company": {
-    "revenue": 15000000,
-    "cagr_3y": 0.15,
-    "score": 65,
-    "industry": "Tech",
-    "distance_km": 50
-  }
-}
-```
-
-### POST /api/score/bulk
-Score multiple persons (max 1000).
-
-### GET /api/score/config
-View current scoring configuration.
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/analysis/activities-weekly` | GET | Activities per week (last 3 months) |
+| `/api/analysis/activities-per-user` | GET | Activities per sales rep |
+| `/api/analysis/scoring-summary` | GET | Score distribution per tier |
 
 ## Scoring Model
 
@@ -73,9 +66,14 @@ View current scoring configuration.
 - Existing Score: 15%
 
 ### Tiers
-- **GOLD**: Combined score ≥ 70
+- **GOLD**: Combined score >= 70
 - **SILVER**: Combined score 40-69
 - **BRONZE**: Combined score < 40
+
+## Pages
+
+- `/` - Dashboard with scoring test and API documentation
+- `/analysis` - Analysis dashboard with scoring overview and engagement analytics
 
 ## TIC.io Integration
 

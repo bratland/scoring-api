@@ -1,1 +1,241 @@
 @import 'tailwindcss';
+
+/* Daily Wins Design System */
+@theme {
+  /* Colors */
+  --color-dw-bg: #F5F3EE;
+  --color-dw-text: #0E122F;
+  --color-dw-blue: #184ACE;
+  --color-dw-lime: #D9FF42;
+  --color-dw-dark: #040404;
+  --color-dw-gray: #656565;
+  --color-dw-light-gray: #E6E6E6;
+  --color-dw-border: #DBE0D7;
+  --color-dw-secondary-dark: #192533;
+
+  /* Font Family */
+  --font-abc: 'ABC Diatype', ui-sans-serif, system-ui, sans-serif;
+
+  /* Font Sizes with line-height */
+  --text-dw-h1: 144px;
+  --text-dw-h1--line-height: 120px;
+
+  --text-dw-h2: 62px;
+  --text-dw-h2--line-height: 62px;
+
+  --text-dw-h3: 18px;
+  --text-dw-h3--line-height: 22.5px;
+
+  --text-dw-body: 18px;
+  --text-dw-body--line-height: 27.9px;
+
+  --text-dw-base: 16px;
+  --text-dw-base--line-height: 24px;
+
+  /* Border Radius */
+  --radius-dw: 3px;
+  --radius-dw-full: 9999px;
+
+  /* Spacing (button padding) */
+  --spacing-dw-btn: 13px;
+}
+
+/* Font Face - ABC Diatype Variable */
+@font-face {
+  font-family: 'ABC Diatype';
+  src: url('/fonts/ABCDiatypeVariable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Base styles */
+@layer base {
+  body {
+    font-family: var(--font-abc);
+    background-color: var(--color-dw-bg);
+    color: var(--color-dw-text);
+    font-size: var(--text-dw-base);
+    line-height: var(--text-dw-base--line-height);
+    font-weight: 450;
+  }
+
+  h1 {
+    font-size: 2.5rem;
+    line-height: 1.2;
+    font-weight: 700;
+    color: var(--color-dw-text);
+  }
+
+  h2 {
+    font-size: 1.5rem;
+    line-height: 1.3;
+    font-weight: 700;
+    color: var(--color-dw-text);
+  }
+
+  h3 {
+    font-size: 1.125rem;
+    line-height: 1.4;
+    font-weight: 600;
+    color: var(--color-dw-text);
+  }
+
+  h4 {
+    font-size: 1rem;
+    line-height: 1.5;
+    font-weight: 600;
+    color: var(--color-dw-text);
+  }
+
+  p {
+    font-size: var(--text-dw-body);
+    line-height: var(--text-dw-body--line-height);
+    font-weight: 450;
+  }
+}
+
+/* Component styles */
+@layer components {
+  /* Primary CTA button - lime green */
+  .btn-primary {
+    background-color: var(--color-dw-lime);
+    color: var(--color-dw-text);
+    padding: var(--spacing-dw-btn) 1.5rem;
+    border-radius: var(--radius-dw);
+    font-weight: 700;
+    transition: all 0.2s ease;
+  }
+  .btn-primary:hover {
+    filter: brightness(0.95);
+  }
+
+  /* Secondary button - white */
+  .btn-secondary {
+    background-color: white;
+    color: var(--color-dw-dark);
+    padding: var(--spacing-dw-btn) 1.5rem;
+    border-radius: var(--radius-dw);
+    font-weight: 700;
+    border: 1px solid var(--color-dw-border);
+    transition: all 0.2s ease;
+  }
+  .btn-secondary:hover {
+    background-color: var(--color-dw-bg);
+  }
+
+  /* Blue accent button */
+  .btn-blue {
+    background-color: var(--color-dw-blue);
+    color: white;
+    padding: var(--spacing-dw-btn) 1.5rem;
+    border-radius: var(--radius-dw);
+    font-weight: 700;
+    transition: all 0.2s ease;
+  }
+  .btn-blue:hover {
+    filter: brightness(1.1);
+  }
+
+  /* Card component */
+  .card {
+    background-color: white;
+    border-radius: var(--radius-dw);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    border: 1px solid var(--color-dw-border);
+  }
+
+  /* Input styling */
+  input[type="text"],
+  input[type="number"],
+  input[type="email"],
+  select,
+  textarea {
+    border: 1px solid var(--color-dw-border);
+    border-radius: var(--radius-dw);
+    padding: 0.625rem 0.875rem;
+    font-size: var(--text-dw-base);
+    transition: border-color 0.2s ease;
+  }
+  input:focus,
+  select:focus,
+  textarea:focus {
+    outline: none;
+    border-color: var(--color-dw-blue);
+    box-shadow: 0 0 0 3px rgba(24, 74, 206, 0.1);
+  }
+
+  /* Range slider styling */
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 6px;
+    background: var(--color-dw-light-gray);
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    background: var(--color-dw-blue);
+    border-radius: 50%;
+    cursor: pointer;
+    transition: transform 0.15s ease;
+  }
+  input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.15);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    background: var(--color-dw-blue);
+    border-radius: 50%;
+    cursor: pointer;
+    border: none;
+  }
+
+  /* Tab navigation */
+  .tab-nav {
+    background-color: white;
+    border-radius: var(--radius-dw);
+    padding: 4px;
+    display: inline-flex;
+    gap: 4px;
+    border: 1px solid var(--color-dw-border);
+  }
+  .tab-nav button {
+    padding: 0.5rem 1rem;
+    border-radius: 2px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    color: var(--color-dw-gray);
+  }
+  .tab-nav button:hover {
+    background-color: var(--color-dw-bg);
+  }
+  .tab-nav button.active {
+    background-color: var(--color-dw-blue);
+    color: white;
+  }
+
+  /* Badge/tag component */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: var(--radius-dw-full);
+  }
+  .badge-lime {
+    background-color: var(--color-dw-lime);
+    color: var(--color-dw-text);
+  }
+  .badge-blue {
+    background-color: rgba(24, 74, 206, 0.1);
+    color: var(--color-dw-blue);
+  }
+}
