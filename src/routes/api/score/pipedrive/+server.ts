@@ -2,38 +2,49 @@ import { json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
 import { PipedriveClient, extractOrgId } from '$lib/pipedrive/client';
+import { TicClient } from '$lib/tic';
+import { CompanyEnricher, DEFAULT_TIC_FIELD_NAMES } from '$lib/enrichment';
+import { PerplexityClient } from '$lib/perplexity';
 import { calculateScore, type PersonInput, type CompanyInput } from '$lib/scoring/scorer';
-import { SCORING_CONFIG } from '$lib/scoring/config';
+import type { TicFieldMapping } from '$lib/enrichment';
 
 interface ScorePipedriveRequest {
 	person_id: number;
-	api_token?: string; // Optional - uses env var if not provided
-	tier_field_key?: string;
-	score_field_key?: string;
-	field_mapping?: {
-		functions?: string;
-		relationship_strength?: string;
-		revenue?: string;
-		cagr_3y?: string;
-		score?: string;
-		industry?: string;
-		distance_km?: string;
-	};
 }
 
-// Default field keys for this Pipedrive instance
-const DEFAULT_TIER_FIELD_KEY = '89c2b747b8d3f93a35ad244ac66444415300ae68';
-const DEFAULT_SCORE_FIELD_KEY = 'c93c9446c16874d8eb9464e1cf1215ee3ae26a80';
+// Default field keys for updating Pipedrive
+const DEFAULT_TIER_FIELD_KEY = '5a4962a2b5338ec996e6807300212e9d2763be1c';  // "Lead Tier"
+const DEFAULT_SCORE_FIELD_KEY = '49ee51d1e5e397fca73c124dde367245ee79783f'; // "Lead Score"
 
-const DEFAULT_FIELD_MAPPING = {
-	functions: 'Functions',
-	relationship_strength: 'Relationship Strength',
-	revenue: 'Omsättning',
-	cagr_3y: 'CAGR 3Y',
-	score: 'Score',
-	industry: 'Bransch SE',
-	distance_km: 'Avstånd GBG'  // Distance to Gothenburg in km
-};
+// Cache field mapping to avoid fetching on every request
+let cachedFieldMapping: TicFieldMapping | null = null;
+
+async function getFieldMapping(client: PipedriveClient): Promise<TicFieldMapping | null> {
+	if (cachedFieldMapping) return cachedFieldMapping;
+
+	const fieldsResult = await client.getOrganizationFields();
+	if (!fieldsResult.success || !fieldsResult.data) return null;
+
+	const fieldNameToKey: Record<string, string> = {};
+	for (const field of fieldsResult.data) {
+		fieldNameToKey[field.name.toLowerCase()] = field.key;
+	}
+
+	const mapping: Partial<TicFieldMapping> = {};
+	for (const [mappingKey, displayName] of Object.entries(DEFAULT_TIC_FIELD_NAMES)) {
+		const key = fieldNameToKey[displayName.toLowerCase()];
+		if (key) {
+			mapping[mappingKey as keyof TicFieldMapping] = key;
+		}
+	}
+
+	if (mapping.orgNumber) {
+		cachedFieldMapping = mapping as TicFieldMapping;
+		return cachedFieldMapping;
+	}
+
+	return null;
+}
 
 function validateApiKey(request: Request): boolean {
 	const apiKey = env.SCORING_API_KEY;
@@ -59,16 +70,6 @@ function findFieldValue(obj: Record<string, unknown>, fieldName: string): unknow
 	return undefined;
 }
 
-function parseNumericValue(value: unknown): number | undefined {
-	if (value === null || value === undefined) return undefined;
-	if (typeof value === 'number') return value;
-	if (typeof value === 'string') {
-		const parsed = parseFloat(value.replace(/[^\d.-]/g, ''));
-		return isNaN(parsed) ? undefined : parsed;
-	}
-	return undefined;
-}
-
 function parseFunctions(value: unknown): string[] {
 	if (!value) return [];
 	if (Array.isArray(value)) return value.map(String);
@@ -91,92 +92,194 @@ export const POST: RequestHandler = async ({ request }) => {
 			return json({ error: 'Missing person_id' }, { status: 400 });
 		}
 
-		// Use provided token or fall back to environment variable
-		const apiToken = body.api_token || env.PIPEDRIVE_API_TOKEN;
+		// Use environment variable for Pipedrive token
+		const apiToken = env.TARGET_PIPEDRIVE_API_TOKEN;
 		if (!apiToken) {
-			return json({ error: 'No Pipedrive API token available' }, { status: 400 });
+			return json({ error: 'No Pipedrive API token configured' }, { status: 500 });
 		}
 
 		const client = new PipedriveClient({ apiToken });
-		const fieldMapping = { ...DEFAULT_FIELD_MAPPING, ...body.field_mapping };
 
-		// Use default field keys if not provided
-		const tierFieldKey = body.tier_field_key || DEFAULT_TIER_FIELD_KEY;
-		const scoreFieldKey = body.score_field_key || DEFAULT_SCORE_FIELD_KEY;
-
-		// Fetch person data
+		// ─────────────────────────────────────────────────────────────
+		// 1. Fetch person from Pipedrive
+		// ─────────────────────────────────────────────────────────────
 		const personResult = await client.getPerson(body.person_id);
 		if (!personResult.success || !personResult.data) {
 			return json(
-				{ error: 'Failed to fetch person', details: personResult.error },
+				{ error: 'Person not found', details: personResult.error },
 				{ status: 404 }
 			);
 		}
 
 		const person = personResult.data;
-		let organization: Record<string, unknown> | null = null;
+		const personData = person as {
+			name?: string;
+			email?: Array<{ value: string }>;
+			[key: string]: unknown;
+		};
 
-		// Fetch organization if linked
+		// ─────────────────────────────────────────────────────────────
+		// 2. Fetch organization and enrich with TIC
+		// ─────────────────────────────────────────────────────────────
+		let organization: Record<string, unknown> | null = null;
+		let enrichedCompany: {
+			revenue?: number;
+			cagr3y?: number;
+			industry?: string;
+			distanceToGothenburg?: number;
+			employees?: number;
+		} | null = null;
+
 		const orgId = extractOrgId(person.org_id);
 		if (orgId) {
 			const orgResult = await client.getOrganization(orgId);
 			if (orgResult.success && orgResult.data) {
 				organization = orgResult.data as Record<string, unknown>;
+
+				// Enrich with TIC if API key available
+				const ticApiKey = env.TIC_API_KEY;
+				if (ticApiKey) {
+					try {
+						const ticClient = new TicClient({ apiKey: ticApiKey });
+						const enricher = new CompanyEnricher(ticClient, client);
+
+						const fieldMapping = await getFieldMapping(client);
+						if (fieldMapping) {
+							enricher.setFieldMapping(fieldMapping);
+						}
+
+						const enrichResult = await enricher.enrichCompany(orgId, organization);
+						if (enrichResult) {
+							enrichedCompany = {
+								revenue: enrichResult.revenue,
+								cagr3y: enrichResult.cagr3y,
+								industry: enrichResult.industry,
+								distanceToGothenburg: enrichResult.distanceToGothenburg,
+								employees: enrichResult.employees
+							};
+						}
+					} catch (ticError) {
+						console.warn('TIC enrichment failed:', ticError);
+					}
+				}
 			}
 		}
 
-		// Fetch activities for engagement score
-		const activitiesResult = await client.getPersonActivities(body.person_id, 90);
-		const activityCount = activitiesResult.success && activitiesResult.data
-			? activitiesResult.data.length
-			: 0;
+		// ─────────────────────────────────────────────────────────────
+		// 3. Find person's role via Perplexity (if not in Pipedrive)
+		// ─────────────────────────────────────────────────────────────
+		let detectedRole: string | null = null;
 
-		// Build scoring inputs from Pipedrive data
+		// First check if role exists in Pipedrive
+		const existingFunctions = parseFunctions(findFieldValue(personData, 'Functions'));
+
+		if (existingFunctions.length === 0 && personData.name) {
+			const perplexityApiKey = env.PERPLEXITY_API_KEY;
+			if (perplexityApiKey) {
+				try {
+					const perplexityClient = new PerplexityClient({ apiKey: perplexityApiKey });
+					const orgName = organization?.name as string | undefined;
+					const email = personData.email?.[0]?.value;
+
+					const roleResult = await perplexityClient.findPersonRole(personData.name, orgName, email);
+
+					if (roleResult.confidence !== 'none' && roleResult.role) {
+						detectedRole = roleResult.role;
+					}
+				} catch (perplexityError) {
+					console.warn('Perplexity role lookup failed:', perplexityError);
+				}
+			}
+		}
+
+		// ─────────────────────────────────────────────────────────────
+		// 4. Calculate engagement (activities + notes + emails + files)
+		// ─────────────────────────────────────────────────────────────
+		const ninetyDaysAgo = new Date();
+		ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+		const [activitiesResult, notesResult, mailResult, filesResult] = await Promise.all([
+			client.getPersonActivities(body.person_id, 90),
+			client.getPersonNotes(body.person_id),
+			client.getPersonMailMessages(body.person_id),
+			client.getPersonFiles(body.person_id)
+		]);
+
+		const activities = activitiesResult.success ? activitiesResult.data || [] : [];
+		const notes = notesResult.success ? notesResult.data || [] : [];
+		const mail = mailResult.success ? mailResult.data || [] : [];
+		const files = filesResult.success ? filesResult.data || [] : [];
+
+		// Filter to last 90 days
+		const recentNotes = notes.filter(n => new Date(n.add_time) >= ninetyDaysAgo);
+		const recentMail = mail.filter(m => new Date(m.message_time) >= ninetyDaysAgo);
+		const recentFiles = files.filter(f => new Date(f.add_time) >= ninetyDaysAgo);
+
+		const totalEngagement = activities.length + recentNotes.length + recentMail.length + recentFiles.length;
+
+		// ─────────────────────────────────────────────────────────────
+		// 5. Build scoring inputs
+		// ─────────────────────────────────────────────────────────────
+		const functions = existingFunctions.length > 0 ? existingFunctions : (detectedRole ? [detectedRole] : []);
+		const relationshipStrength = findFieldValue(personData, 'Relationship Strength') as string | undefined;
+
 		const personInput: PersonInput = {
-			functions: parseFunctions(findFieldValue(person as Record<string, unknown>, fieldMapping.functions)),
-			relationship_strength: findFieldValue(person as Record<string, unknown>, fieldMapping.relationship_strength) as string | undefined,
-			activities_90d: activityCount
+			functions,
+			relationship_strength: relationshipStrength,
+			activities_90d: totalEngagement
 		};
 
-		const companyInput: CompanyInput = organization ? {
-			revenue: parseNumericValue(findFieldValue(organization, fieldMapping.revenue)),
-			cagr_3y: parseNumericValue(findFieldValue(organization, fieldMapping.cagr_3y)),
-			score: parseNumericValue(findFieldValue(organization, fieldMapping.score)),
-			industry: findFieldValue(organization, fieldMapping.industry) as string | undefined,
-			distance_km: parseNumericValue(findFieldValue(organization, fieldMapping.distance_km))
-		} : {};
+		const companyInput: CompanyInput = {
+			revenue: enrichedCompany?.revenue,
+			cagr_3y: enrichedCompany?.cagr3y,
+			industry: enrichedCompany?.industry,
+			distance_km: enrichedCompany?.distanceToGothenburg,
+			employees: enrichedCompany?.employees
+		};
 
-		// Calculate score
+		// ─────────────────────────────────────────────────────────────
+		// 6. Calculate score
+		// ─────────────────────────────────────────────────────────────
 		const scoreResult = calculateScore(personInput, companyInput);
 
-		// Prepare update payload
+		// ─────────────────────────────────────────────────────────────
+		// 7. Update Pipedrive with tier and score
+		// ─────────────────────────────────────────────────────────────
 		const updates: Record<string, unknown> = {
-			[tierFieldKey]: scoreResult.tier,
-			[scoreFieldKey]: scoreResult.combined_score
+			[DEFAULT_TIER_FIELD_KEY]: scoreResult.tier,
+			[DEFAULT_SCORE_FIELD_KEY]: Math.round(scoreResult.combined_score)
 		};
 
-		// Update person in Pipedrive
 		const updateResult = await client.updatePerson(body.person_id, updates);
 
+		// ─────────────────────────────────────────────────────────────
+		// 8. Return clean response (no mention of TIC/Perplexity)
+		// ─────────────────────────────────────────────────────────────
 		return json({
 			success: true,
 			person_id: body.person_id,
 			person_name: person.name,
 			organization_name: organization?.name || null,
-			scoring: scoreResult,
-			pipedrive_update: {
-				success: updateResult.success,
-				error: updateResult.error,
-				fields_updated: Object.keys(updates)
+			tier: scoreResult.tier,
+			score: Math.round(scoreResult.combined_score),
+			breakdown: {
+				person_score: Math.round(scoreResult.person_score),
+				company_score: Math.round(scoreResult.company_score),
+				factors: scoreResult.breakdown
 			},
-			data_used: {
-				person: personInput,
-				company: companyInput
-			}
+			engagement: {
+				activities: activities.length,
+				notes: recentNotes.length,
+				emails: recentMail.length,
+				files: recentFiles.length,
+				total: totalEngagement
+			},
+			pipedrive_updated: updateResult.success,
+			warnings: scoreResult.warnings
 		});
 
 	} catch (error) {
-		console.error('Pipedrive scoring error:', error);
+		console.error('Scoring error:', error);
 		return json(
 			{
 				error: 'Internal server error',
@@ -187,57 +290,46 @@ export const POST: RequestHandler = async ({ request }) => {
 	}
 };
 
-// GET endpoint for health check and usage info
-export const GET: RequestHandler = async ({ request, url }) => {
-	// API key not required for GET (documentation endpoint)
-
-	const apiToken = url.searchParams.get('api_token') || env.PIPEDRIVE_API_TOKEN;
-
-	if (!apiToken) {
-		return json({
-			description: 'Pipedrive scoring endpoint',
-			usage: {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					'x-api-key': 'your-scoring-api-key'
-				},
-				body: {
-					person_id: 12345
-				},
-				note: 'Pipedrive API token and field keys are pre-configured'
-			}
-		});
-	}
-
-	// Discover fields
-	const client = new PipedriveClient({ apiToken });
-
-	const [personFields, orgFields] = await Promise.all([
-		client.getPersonFields(),
-		client.getOrganizationFields()
-	]);
-
+// GET endpoint for usage info
+export const GET: RequestHandler = async () => {
 	return json({
-		person_fields: personFields.success ? personFields.data?.map(f => ({
-			key: f.key,
-			name: f.name,
-			type: f.field_type,
-			options: f.options
-		})) : [],
-		organization_fields: orgFields.success ? orgFields.data?.map(f => ({
-			key: f.key,
-			name: f.name,
-			type: f.field_type
-		})) : [],
-		configured_defaults: {
-			tier_field_key: DEFAULT_TIER_FIELD_KEY,
-			score_field_key: DEFAULT_SCORE_FIELD_KEY,
-			field_mapping: DEFAULT_FIELD_MAPPING
+		endpoint: 'POST /api/score/pipedrive',
+		description: 'Calculate lead score for a Pipedrive person',
+		request: {
+			headers: {
+				'Content-Type': 'application/json',
+				'x-api-key': 'your-api-key (if configured)'
+			},
+			body: {
+				person_id: 'number (required) - Pipedrive person ID'
+			}
 		},
-		scoring_config: {
-			role_scores: SCORING_CONFIG.roleScores,
-			relationship_scores: SCORING_CONFIG.relationshipScores
+		response: {
+			success: 'boolean',
+			person_id: 'number',
+			person_name: 'string',
+			organization_name: 'string | null',
+			tier: 'GOLD | SILVER | BRONZE',
+			score: 'number (0-100)',
+			breakdown: {
+				person_score: 'number',
+				company_score: 'number',
+				factors: 'object with individual scores'
+			},
+			engagement: {
+				activities: 'number',
+				notes: 'number',
+				emails: 'number',
+				files: 'number',
+				total: 'number'
+			},
+			pipedrive_updated: 'boolean',
+			warnings: 'string[]'
+		},
+		tiers: {
+			GOLD: '>= 70',
+			SILVER: '40-69',
+			BRONZE: '< 40'
 		}
 	});
 };

@@ -22,9 +22,8 @@ const openApiSpec = {
 		}
 	],
 	tags: [
-		{ name: 'Scoring', description: 'Calculate lead scores' },
-		{ name: 'Pipedrive', description: 'Pipedrive CRM integration' },
-		{ name: 'Persons', description: 'Person data and enrichment' }
+		{ name: 'Scoring', description: 'Calculate lead scores for persons and companies' },
+		{ name: 'Persons', description: 'Person data with enrichment' }
 	],
 	paths: {
 		'/api/score/person': {
@@ -148,9 +147,9 @@ const openApiSpec = {
 		},
 		'/api/score/pipedrive': {
 			post: {
-				tags: ['Pipedrive'],
+				tags: ['Scoring'],
 				summary: 'Score a Pipedrive person',
-				description: 'Fetch person data from Pipedrive, calculate score, and update the person record with tier and score.',
+				description: 'Calculate lead score for a person in Pipedrive. Automatically enriches company data and detects person role. Updates the person record with tier and score.',
 				operationId: 'scorePipedrive',
 				security: [{ apiKey: [] }],
 				requestBody: {
@@ -159,17 +158,48 @@ const openApiSpec = {
 						'application/json': {
 							schema: { $ref: '#/components/schemas/ScorePipedriveRequest' },
 							example: {
-								person_id: 12345
+								person_id: 6361
 							}
 						}
 					}
 				},
 				responses: {
 					'200': {
-						description: 'Scoring result with Pipedrive update status',
+						description: 'Scoring result',
 						content: {
 							'application/json': {
-								schema: { $ref: '#/components/schemas/PipedriveScoringResponse' }
+								schema: { $ref: '#/components/schemas/PipedriveScoringResponse' },
+								example: {
+									success: true,
+									person_id: 6361,
+									person_name: 'Johan Dahn',
+									organization_name: 'Liseberg AB',
+									tier: 'SILVER',
+									score: 48,
+									breakdown: {
+										person_score: 47,
+										company_score: 71,
+										factors: {
+											role_score: 75,
+											relationship_score: 30,
+											engagement_score: 25,
+											revenue_score: 100,
+											growth_score: 40,
+											industry_score: 50,
+											distance_score: 100,
+											existing_score: 50
+										}
+									},
+									engagement: {
+										activities: 0,
+										notes: 1,
+										emails: 0,
+										files: 0,
+										total: 1
+									},
+									pipedrive_updated: true,
+									warnings: []
+								}
 							}
 						}
 					},
@@ -192,16 +222,25 @@ const openApiSpec = {
 				}
 			},
 			get: {
-				tags: ['Pipedrive'],
-				summary: 'Get Pipedrive field configuration',
-				description: 'Discover available person and organization fields in the connected Pipedrive instance.',
-				operationId: 'getPipedriveConfig',
+				tags: ['Scoring'],
+				summary: 'Get endpoint documentation',
+				description: 'Returns usage information for the scoring endpoint.',
+				operationId: 'getScorePipedriveInfo',
 				responses: {
 					'200': {
-						description: 'Field configuration and scoring settings',
+						description: 'Endpoint documentation',
 						content: {
 							'application/json': {
-								schema: { $ref: '#/components/schemas/PipedriveConfigResponse' }
+								schema: {
+									type: 'object',
+									properties: {
+										endpoint: { type: 'string' },
+										description: { type: 'string' },
+										request: { type: 'object' },
+										response: { type: 'object' },
+										tiers: { type: 'object' }
+									}
+								}
 							}
 						}
 					}
@@ -414,87 +453,50 @@ const openApiSpec = {
 					person_id: {
 						type: 'integer',
 						description: 'Pipedrive person ID',
-						example: 12345
-					},
-					api_token: {
-						type: 'string',
-						description: 'Pipedrive API token (optional, uses server config if not provided)'
-					},
-					tier_field_key: {
-						type: 'string',
-						description: 'Custom field key for tier (optional)'
-					},
-					score_field_key: {
-						type: 'string',
-						description: 'Custom field key for score (optional)'
-					},
-					field_mapping: {
-						type: 'object',
-						description: 'Custom field name mappings',
-						properties: {
-							functions: { type: 'string' },
-							relationship_strength: { type: 'string' },
-							revenue: { type: 'string' },
-							cagr_3y: { type: 'string' },
-							score: { type: 'string' },
-							industry: { type: 'string' },
-							distance_km: { type: 'string' }
-						}
+						example: 6361
 					}
 				}
 			},
 			PipedriveScoringResponse: {
 				type: 'object',
+				required: ['success', 'person_id', 'tier', 'score'],
 				properties: {
-					success: { type: 'boolean' },
-					person_id: { type: 'integer' },
-					person_name: { type: 'string' },
-					organization_name: { type: 'string', nullable: true },
-					scoring: { $ref: '#/components/schemas/ScoringResult' },
-					pipedrive_update: {
+					success: { type: 'boolean', description: 'Whether the scoring was successful' },
+					person_id: { type: 'integer', description: 'Pipedrive person ID' },
+					person_name: { type: 'string', description: 'Person name from Pipedrive' },
+					organization_name: { type: 'string', nullable: true, description: 'Organization name if linked' },
+					tier: {
+						type: 'string',
+						enum: ['GOLD', 'SILVER', 'BRONZE'],
+						description: 'Score tier (GOLD >= 70, SILVER 40-69, BRONZE < 40)'
+					},
+					score: { type: 'integer', description: 'Combined score (0-100)', minimum: 0, maximum: 100 },
+					breakdown: {
 						type: 'object',
+						description: 'Score breakdown by component',
 						properties: {
-							success: { type: 'boolean' },
-							error: { type: 'string', nullable: true },
-							fields_updated: { type: 'array', items: { type: 'string' } }
+							person_score: { type: 'integer', description: 'Weighted person score (0-100)' },
+							company_score: { type: 'integer', description: 'Weighted company score (0-100)' },
+							factors: { $ref: '#/components/schemas/ScoreBreakdown' }
 						}
 					},
-					data_used: {
+					engagement: {
 						type: 'object',
+						description: 'Engagement metrics for the last 90 days',
 						properties: {
-							person: { $ref: '#/components/schemas/PersonInput' },
-							company: { $ref: '#/components/schemas/CompanyInput' }
+							activities: { type: 'integer', description: 'Number of activities' },
+							notes: { type: 'integer', description: 'Number of notes' },
+							emails: { type: 'integer', description: 'Number of email messages' },
+							files: { type: 'integer', description: 'Number of files' },
+							total: { type: 'integer', description: 'Total engagement count' }
 						}
+					},
+					pipedrive_updated: { type: 'boolean', description: 'Whether Pipedrive was updated with tier/score' },
+					warnings: {
+						type: 'array',
+						items: { type: 'string' },
+						description: 'Warnings about missing data that affected scoring'
 					}
-				}
-			},
-			PipedriveConfigResponse: {
-				type: 'object',
-				properties: {
-					person_fields: {
-						type: 'array',
-						items: {
-							type: 'object',
-							properties: {
-								key: { type: 'string' },
-								name: { type: 'string' },
-								type: { type: 'string' }
-							}
-						}
-					},
-					organization_fields: {
-						type: 'array',
-						items: {
-							type: 'object',
-							properties: {
-								key: { type: 'string' },
-								name: { type: 'string' },
-								type: { type: 'string' }
-							}
-						}
-					},
-					configured_defaults: { type: 'object' },
-					scoring_config: { type: 'object' }
 				}
 			},
 			PersonResponse: {
