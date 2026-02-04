@@ -264,7 +264,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		// 7. Update Pipedrive with tier and score
 		// ─────────────────────────────────────────────────────────────
 		const fieldKeys = await getPersonFieldKeys(client);
-		let updateResult = { success: false, error: 'No field keys found' };
+		let updateResult: { success: boolean; error?: string } = { success: false, error: 'No field keys found' };
 
 		if (fieldKeys.tierKey && fieldKeys.scoreKey) {
 			const updates: Record<string, unknown> = {
