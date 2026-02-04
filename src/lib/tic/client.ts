@@ -10,7 +10,7 @@ import type {
 	TicCachedData,
 	TicApiResponse,
 	TicCompanySearchResult,
-	TicFinancialSummary,
+	TicFinancialPeriod,
 	TicWorkplace,
 	TicCreditInfo
 } from './types';
@@ -32,6 +32,16 @@ export class TicClient {
 	constructor(config: TicClientConfig) {
 		this.apiKey = config.apiKey;
 		this.cacheTtlMs = (config.cacheTtlDays ?? DEFAULT_CACHE_TTL_DAYS) * 24 * 60 * 60 * 1000;
+	}
+
+	/**
+	 * Check if cached data has all expected fields from a complete TIC fetch
+	 * Returns false if essential financial data is missing (indicates old/incomplete cache)
+	 */
+	private isCacheComplete(data: TicCompanyData): boolean {
+		// If we have sniDescription, it means we did a proper fetch with financial data
+		// Old cached data from before the update won't have this field
+		return !!(data.sniDescription || data.revenue !== undefined || data.cagr3y !== undefined);
 	}
 
 	/**
@@ -69,12 +79,13 @@ export class TicClient {
 
 		// Check Redis cache (Vercel KV)
 		const redisData = await getTicCache(normalizedOrgNumber);
-		if (redisData) {
+		if (redisData && this.isCacheComplete(redisData)) {
 			return {
 				success: true,
 				data: redisData
 			};
 		}
+		// If Redis data is incomplete (missing revenue/CAGR/industry), treat as cache miss
 
 		// Check development seed cache (data from API exploration)
 		const seedData = getCachedTicData(normalizedOrgNumber);
@@ -89,7 +100,7 @@ export class TicClient {
 
 		// Cache miss or stale - fetch from TIC API
 		try {
-			// Step 1: Search for company by org number to get companyId
+			// Step 1: Search for company by org number (includes basic data)
 			const searchResult = await this.searchCompany(normalizedOrgNumber);
 			if (!searchResult.success || !searchResult.data) {
 				return {
@@ -100,24 +111,58 @@ export class TicClient {
 			}
 
 			const companyId = searchResult.data.companyId;
+			const searchData = searchResult.data;
 
-			// Step 2: Fetch detailed data in parallel
-			const [financials, workplace, credit] = await Promise.all([
-				this.getFinancialSummary(companyId),
-				this.getWorkplaceLocation(companyId),
-				this.getCreditInfo(companyId)
-			]);
+			// Step 2: Fetch financial history and credit score
+			let revenue: number | undefined;
+			let cagr3y: number | undefined;
+			let employees: number | undefined;
+			let creditScore: number | undefined;
+
+			try {
+				const [financials, credit] = await Promise.all([
+					this.getFinancialHistory(companyId),
+					this.getCreditInfo(companyId)
+				]);
+
+				if (financials.data && financials.data.length > 0) {
+					// Sort by period end date descending to get latest first
+					const sorted = [...financials.data].sort((a, b) =>
+						new Date(b.periodEnd).getTime() - new Date(a.periodEnd).getTime()
+					);
+
+					// Latest revenue (in thousands SEK)
+					revenue = sorted[0].rs_NetSalesK;
+					employees = sorted[0].fn_NumberOfEmployees;
+
+					// Calculate 3-year CAGR if we have enough data
+					if (sorted.length >= 4) {
+						const latestRevenue = sorted[0].rs_NetSalesK;
+						const oldestRevenue = sorted[3].rs_NetSalesK; // 3 years ago
+						if (latestRevenue && oldestRevenue && oldestRevenue > 0) {
+							cagr3y = Math.pow(latestRevenue / oldestRevenue, 1 / 3) - 1;
+						}
+					}
+				}
+
+				creditScore = credit.data?.score;
+			} catch {
+				// Additional data fetch failed - use what we have from search
+				employees = searchData.employees;
+			}
 
 			const companyData: TicCompanyData = {
 				companyId,
 				orgNumber: normalizedOrgNumber,
-				name: searchResult.data.name,
-				revenue: financials.data?.rs_NetSalesK,
-				employees: undefined, // Will be fetched if available
-				creditScore: credit.data?.score,
-				sniCode: undefined, // Will be fetched separately if needed
-				latitude: workplace.data?.latitude,
-				longitude: workplace.data?.longitude,
+				name: searchData.name,
+				revenue,
+				cagr3y,
+				employees: employees ?? searchData.employees,
+				creditScore,
+				sniCode: searchData.sniCode,
+				sniDescription: searchData.sniDescription,
+				latitude: searchData.latitude,
+				longitude: searchData.longitude,
 				fetchedAt: new Date().toISOString()
 			};
 
@@ -172,20 +217,125 @@ export class TicClient {
 	}
 
 	/**
-	 * Search for company by organization number
+	 * Search for company by organization number using new TIC API format
 	 */
 	private async searchCompany(orgNumber: string): Promise<TicApiResponse<TicCompanySearchResult>> {
-		return this.request<TicCompanySearchResult>(
-			`/v1/companies/search?registrationNumber=${orgNumber}`
-		);
+		const url = `${TIC_API_BASE}/search/companies?q=${orgNumber}&query_by=registrationNumber`;
+
+		try {
+			const response = await fetch(url, {
+				headers: {
+					'x-api-key': this.apiKey,
+					'Accept': 'application/json'
+				}
+			});
+
+			if (!response.ok) {
+				return {
+					success: false,
+					data: null,
+					error: `TIC API error: ${response.status}`
+				};
+			}
+
+			const data = await response.json();
+
+			// New API returns results in hits array
+			if (!data.hits || data.hits.length === 0) {
+				return {
+					success: false,
+					data: null,
+					error: 'Company not found'
+				};
+			}
+
+			const doc = data.hits[0].document;
+			// Name can be in nameOrIdentifier or text field depending on API version
+			const primaryName = doc.names?.find((n: { isPrimary?: boolean }) => n.isPrimary)?.nameOrIdentifier
+				|| doc.names?.[0]?.nameOrIdentifier
+				|| doc.names?.[0]?.text;
+
+			// Extract coordinates from workplaces if available
+			// Location can be [lat, lon] array or separate latitude/longitude fields
+			const workplace = doc.currentWorkplaces?.[0];
+			let latitude: number | undefined;
+			let longitude: number | undefined;
+
+			if (workplace?.location && Array.isArray(workplace.location)) {
+				latitude = workplace.location[0];
+				longitude = workplace.location[1];
+			} else if (workplace) {
+				latitude = workplace.latitude;
+				longitude = workplace.longitude;
+			}
+
+			// Parse employee count from various formats
+			const employees = this.parseEmployees(doc.cNbrEmployeesInterval);
+
+			// Get primary SNI code and description (prefer 2007 format, rank 1)
+			const primarySni = doc.sniCodes?.find((s: { rank?: number; sni_2007Code?: string }) =>
+				s.rank === 1 && s.sni_2007Code
+			) || doc.sniCodes?.[0];
+
+			return {
+				success: true,
+				data: {
+					companyId: String(doc.companyId),
+					registrationNumber: doc.registrationNumber,
+					name: primaryName,
+					// Additional data from search response
+					latitude,
+					longitude,
+					sniCode: primarySni?.sni_2007Code || primarySni?.code,
+					sniDescription: primarySni?.sni_2007Name || primarySni?.name,
+					employees
+				}
+			};
+		} catch (error) {
+			return {
+				success: false,
+				data: null,
+				error: error instanceof Error ? error.message : 'Search failed'
+			};
+		}
 	}
 
 	/**
-	 * Get financial summary for a company
+	 * Parse employee count from various TIC formats
 	 */
-	private async getFinancialSummary(companyId: string): Promise<TicApiResponse<TicFinancialSummary>> {
-		return this.request<TicFinancialSummary>(
-			`/v1/companies/${companyId}/financial-summary`
+	private parseEmployees(data: unknown): number | undefined {
+		if (!data) return undefined;
+
+		// Handle object format: { categoryCodeDescription: "2000-2999 anställda" }
+		if (typeof data === 'object' && data !== null) {
+			const obj = data as { categoryCodeDescription?: string };
+			if (obj.categoryCodeDescription) {
+				const match = obj.categoryCodeDescription.match(/(\d+)-(\d+)/);
+				if (match) {
+					return Math.round((parseInt(match[1]) + parseInt(match[2])) / 2);
+				}
+			}
+		}
+
+		// Handle string format: "10-19", "50-99" etc
+		if (typeof data === 'string') {
+			const match = data.match(/(\d+)-(\d+)/);
+			if (match) {
+				return Math.round((parseInt(match[1]) + parseInt(match[2])) / 2);
+			}
+			const single = parseInt(data);
+			return isNaN(single) ? undefined : single;
+		}
+
+		return undefined;
+	}
+
+	/**
+	 * Get financial history (array of periods) for a company
+	 */
+	private async getFinancialHistory(companyId: string): Promise<TicApiResponse<TicFinancialPeriod[]>> {
+		return this.request<TicFinancialPeriod[]>(
+			`/datasets/companies/${companyId}/financial-summary`
 		);
 	}
 
@@ -194,7 +344,7 @@ export class TicClient {
 	 */
 	private async getWorkplaceLocation(companyId: string): Promise<TicApiResponse<TicWorkplace>> {
 		return this.request<TicWorkplace>(
-			`/v1/companies/${companyId}/workplaces`
+			`/datasets/companies/${companyId}/workplaces`
 		);
 	}
 
@@ -203,7 +353,7 @@ export class TicClient {
 	 */
 	private async getCreditInfo(companyId: string): Promise<TicApiResponse<TicCreditInfo>> {
 		return this.request<TicCreditInfo>(
-			`/v1/companies/${companyId}/credit-score`
+			`/datasets/companies/${companyId}/credit-score`
 		);
 	}
 

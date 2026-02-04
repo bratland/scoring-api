@@ -18,9 +18,11 @@ export interface EnrichedCompanyData {
 
 	// TIC data
 	revenue?: number;           // In SEK (converted from thousands)
+	cagr3y?: number;            // 3-year compound annual growth rate
 	employees?: number;
 	creditScore?: number;
 	sniCode?: string;
+	industry?: string;          // SNI description / industry name
 	distanceToGothenburg?: number;  // Calculated from coordinates
 
 	// Metadata
@@ -364,9 +366,11 @@ export class CompanyEnricher {
 			orgNumber,
 			ticCompanyId: ticData.companyId,
 			revenue: ticData.revenue ? ticData.revenue * 1000 : undefined, // Convert from thousands
+			cagr3y: ticData.cagr3y,
 			employees: ticData.employees,
 			creditScore: ticData.creditScore,
 			sniCode: ticData.sniCode,
+			industry: ticData.sniDescription,
 			distanceToGothenburg: distance,
 			dataSource: 'tic',
 			cacheAge: 0,
