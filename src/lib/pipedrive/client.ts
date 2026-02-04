@@ -140,4 +140,34 @@ export class PipedriveClient {
 	}>>> {
 		return this.request(`/organizationFields`);
 	}
+
+	async updateOrganization(
+		orgId: number,
+		updates: Record<string, unknown>
+	): Promise<PipedriveResponse<PipedriveOrganization>> {
+		return this.request<PipedriveOrganization>(`/organizations/${orgId}`, {
+			method: 'PUT',
+			body: JSON.stringify(updates)
+		});
+	}
+
+	async createOrganizationField(
+		name: string,
+		fieldType: string = 'varchar'
+	): Promise<PipedriveResponse<{ id: number; key: string; name: string }>> {
+		return this.request(`/organizationFields`, {
+			method: 'POST',
+			body: JSON.stringify({ name, field_type: fieldType })
+		});
+	}
+
+	async createPersonField(
+		name: string,
+		fieldType: string = 'double'
+	): Promise<PipedriveResponse<{ id: number; key: string; name: string }>> {
+		return this.request(`/personFields`, {
+			method: 'POST',
+			body: JSON.stringify({ name, field_type: fieldType })
+		});
+	}
 }

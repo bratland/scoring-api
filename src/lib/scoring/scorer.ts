@@ -12,6 +12,7 @@ export interface CompanyInput {
 	score?: number;
 	industry?: string;
 	employees?: number;
+	distance_km?: number;  // Distance to Gothenburg in km
 }
 
 export interface ScoreBreakdown {
@@ -21,6 +22,7 @@ export interface ScoreBreakdown {
 	revenue_score: number;
 	growth_score: number;
 	industry_score: number;
+	distance_score: number;
 	existing_score: number;
 }
 
@@ -84,6 +86,17 @@ function calculateIndustryScore(industry: string | undefined): number {
 	return isTarget ? 90 : 50;
 }
 
+function calculateDistanceScore(distance_km: number | undefined): number {
+	if (distance_km === undefined || distance_km === null) return 50; // Unknown distance
+
+	for (const tier of SCORING_CONFIG.distanceTiers) {
+		if (distance_km <= tier.max) {
+			return tier.score;
+		}
+	}
+	return SCORING_CONFIG.distanceTiers[SCORING_CONFIG.distanceTiers.length - 1].score;
+}
+
 function determineTier(score: number): Tier {
 	if (score >= SCORING_CONFIG.tiers.gold) return 'GOLD';
 	if (score >= SCORING_CONFIG.tiers.silver) return 'SILVER';
@@ -114,6 +127,9 @@ export function calculateScore(person: PersonInput, company: CompanyInput): Scor
 	const industryScore = calculateIndustryScore(company.industry);
 	if (company.industry) factorsUsed.push('industry');
 
+	const distanceScore = calculateDistanceScore(company.distance_km);
+	if (company.distance_km !== undefined) factorsUsed.push('distance_km');
+
 	const existingScore = company.score ?? 50;
 	if (company.score !== undefined) factorsUsed.push('company_score');
 
@@ -137,6 +153,7 @@ export function calculateScore(person: PersonInput, company: CompanyInput): Scor
 		revenueScore * SCORING_CONFIG.companyFactors.revenue +
 		growthScore * SCORING_CONFIG.companyFactors.growth +
 		industryScore * SCORING_CONFIG.companyFactors.industryFit +
+		distanceScore * SCORING_CONFIG.companyFactors.distance +
 		existingScore * SCORING_CONFIG.companyFactors.existingScore
 	);
 
@@ -160,6 +177,7 @@ export function calculateScore(person: PersonInput, company: CompanyInput): Scor
 			revenue_score: revenueScore,
 			growth_score: growthScore,
 			industry_score: industryScore,
+			distance_score: distanceScore,
 			existing_score: existingScore
 		},
 		factors_used: factorsUsed,

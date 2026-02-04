@@ -26,10 +26,11 @@ export const SCORING_CONFIG = {
 
 	// Company scoring weights (must sum to 1.0)
 	companyFactors: {
-		revenue: 0.3,
-		growth: 0.25,
-		industryFit: 0.25,
-		existingScore: 0.2
+		revenue: 0.25,
+		growth: 0.20,
+		industryFit: 0.20,
+		distance: 0.20,
+		existingScore: 0.15
 	},
 
 	// Role scores (0-100)
@@ -100,6 +101,17 @@ export const SCORING_CONFIG = {
 		{ min: 2, score: 40 },
 		{ min: 1, score: 25 },
 		{ min: 0, score: 10 }
+	],
+
+	// Distance to Gothenburg scoring (km) - closer = higher score
+	distanceTiers: [
+		{ max: 50, score: 100 },    // Göteborg & närområde
+		{ max: 100, score: 85 },    // Västsverige
+		{ max: 200, score: 70 },    // Sydvästra Sverige
+		{ max: 400, score: 55 },    // Södra/Mellersta Sverige
+		{ max: 600, score: 40 },    // Stockholm-området
+		{ max: 1000, score: 25 },   // Norra Sverige
+		{ max: Infinity, score: 15 } // Utomlands/okänt
 	]
 };
 

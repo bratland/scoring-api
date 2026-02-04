@@ -17,6 +17,7 @@ interface ScorePipedriveRequest {
 		cagr_3y?: string;
 		score?: string;
 		industry?: string;
+		distance_km?: string;
 	};
 }
 
@@ -30,7 +31,8 @@ const DEFAULT_FIELD_MAPPING = {
 	revenue: 'Omsättning',
 	cagr_3y: 'CAGR 3Y',
 	score: 'Score',
-	industry: 'Bransch SE'
+	industry: 'Bransch SE',
+	distance_km: 'Avstånd GBG'  // Distance to Gothenburg in km
 };
 
 function validateApiKey(request: Request): boolean {
@@ -140,7 +142,8 @@ export const POST: RequestHandler = async ({ request }) => {
 			revenue: parseNumericValue(findFieldValue(organization, fieldMapping.revenue)),
 			cagr_3y: parseNumericValue(findFieldValue(organization, fieldMapping.cagr_3y)),
 			score: parseNumericValue(findFieldValue(organization, fieldMapping.score)),
-			industry: findFieldValue(organization, fieldMapping.industry) as string | undefined
+			industry: findFieldValue(organization, fieldMapping.industry) as string | undefined,
+			distance_km: parseNumericValue(findFieldValue(organization, fieldMapping.distance_km))
 		} : {};
 
 		// Calculate score
