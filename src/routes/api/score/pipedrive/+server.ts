@@ -239,11 +239,9 @@ export const POST: RequestHandler = async ({ request }) => {
 		// 5. Build scoring inputs
 		// ─────────────────────────────────────────────────────────────
 		const functions = existingFunctions.length > 0 ? existingFunctions : (detectedRole ? [detectedRole] : []);
-		const relationshipStrength = findFieldValue(personData, 'Relationship Strength') as string | undefined;
 
 		const personInput: PersonInput = {
 			functions,
-			relationship_strength: relationshipStrength,
 			activities_90d: totalEngagement
 		};
 

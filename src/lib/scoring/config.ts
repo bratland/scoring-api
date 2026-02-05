@@ -19,9 +19,8 @@ export const SCORING_CONFIG = {
 
 	// Person scoring weights (must sum to 1.0)
 	personFactors: {
-		role: 0.4,
-		relationship: 0.3,
-		engagement: 0.3
+		role: 0.55,
+		engagement: 0.45
 	},
 
 	// Company scoring weights (must sum to 1.0)
@@ -36,13 +35,19 @@ export const SCORING_CONFIG = {
 	// Role scores (0-100)
 	roleScores: {
 		'CEO': 100,
+		'CFO': 95,
+		'COO': 95,
+		'CTO': 95,
+		'CMO': 90,
 		'Board': 95,
 		'Entrepreneur': 90,
 		'Finance': 85,
 		'HR': 85,
 		'Sales': 80,
+		'Marketing': 80,
 		'Operations': 75,
 		'Technology': 75,
+		'IT': 75,
 		'Development': 70,
 		'Projects': 70,
 		'Production': 65,
@@ -54,22 +59,15 @@ export const SCORING_CONFIG = {
 		'None': 30
 	} as Record<string, number>,
 
-	// Relationship strength scores (0-100)
-	relationshipScores: {
-		'We know each other': 100,
-		'We\'ve heard of each other': 60,
-		'Weak': 30
-	} as Record<string, number>,
-
 	// Revenue tiers (SEK) and their scores
 	revenueTiers: [
-		{ min: 100_000_000, score: 100 },  // > 100 MSEK
-		{ min: 50_000_000, score: 85 },    // 50-100 MSEK
-		{ min: 20_000_000, score: 70 },    // 20-50 MSEK
-		{ min: 10_000_000, score: 55 },    // 10-20 MSEK
-		{ min: 5_000_000, score: 40 },     // 5-10 MSEK
-		{ min: 2_000_000, score: 25 },     // 2-5 MSEK
-		{ min: 0, score: 10 }              // < 2 MSEK
+		{ min: 500_000_000, score: 100 },  // > 500 MSEK
+		{ min: 200_000_000, score: 85 },   // 200-500 MSEK
+		{ min: 100_000_000, score: 70 },   // 100-200 MSEK
+		{ min: 50_000_000, score: 55 },    // 50-100 MSEK
+		{ min: 20_000_000, score: 40 },    // 20-50 MSEK
+		{ min: 10_000_000, score: 25 },    // 10-20 MSEK
+		{ min: 0, score: 10 }              // < 10 MSEK
 	],
 
 	// Growth (CAGR) scoring

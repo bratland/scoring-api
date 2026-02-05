@@ -2,7 +2,6 @@ import { SCORING_CONFIG, type Tier } from './config';
 
 export interface PersonInput {
 	functions?: string[];
-	relationship_strength?: string;
 	activities_90d?: number;
 }
 
@@ -17,7 +16,6 @@ export interface CompanyInput {
 
 export interface ScoreBreakdown {
 	role_score: number;
-	relationship_score: number;
 	engagement_score: number;
 	revenue_score: number;
 	growth_score: number;
@@ -34,6 +32,7 @@ export interface ScoringResult {
 	breakdown: ScoreBreakdown;
 	factors_used: string[];
 	warnings: string[];
+	reason: string;
 }
 
 function findTierScore(value: number, tiers: { min: number; score: number }[]): number {
@@ -53,11 +52,6 @@ function calculateRoleScore(functions: string[]): number {
 	// Take the highest scoring role
 	const scores = functions.map(f => SCORING_CONFIG.roleScores[f] || 40);
 	return Math.max(...scores);
-}
-
-function calculateRelationshipScore(strength: string | undefined): number {
-	if (!strength) return 30;
-	return SCORING_CONFIG.relationshipScores[strength] || 30;
 }
 
 function calculateEngagementScore(activities: number | undefined): number {
@@ -103,6 +97,101 @@ function determineTier(score: number): Tier {
 	return 'BRONZE';
 }
 
+function formatRevenue(revenue: number): string {
+	if (revenue >= 1_000_000) {
+		return `${Math.round(revenue / 1_000_000)} MSEK`;
+	}
+	return `${Math.round(revenue / 1_000)} TSEK`;
+}
+
+function generateScoreReason(
+	tier: Tier,
+	breakdown: ScoreBreakdown,
+	person: PersonInput,
+	company: CompanyInput,
+	factorsUsed: string[]
+): string {
+	const parts: string[] = [];
+
+	// Tier summary
+	parts.push(`${tier}:`);
+
+	// Person factors
+	const personParts: string[] = [];
+
+	if (person.functions?.length) {
+		const topRole = person.functions[0];
+		if (breakdown.role_score >= 90) {
+			personParts.push(`${topRole} (beslutsfattare)`);
+		} else if (breakdown.role_score >= 70) {
+			personParts.push(`${topRole}`);
+		} else {
+			personParts.push(`${topRole} (lägre prioritet)`);
+		}
+	} else {
+		personParts.push('Roll saknas');
+	}
+
+	if (person.activities_90d !== undefined) {
+		if (breakdown.engagement_score >= 80) {
+			personParts.push(`hög aktivitet (${person.activities_90d} aktiviteter)`);
+		} else if (breakdown.engagement_score >= 40) {
+			personParts.push(`viss aktivitet (${person.activities_90d})`);
+		} else {
+			personParts.push('låg aktivitet');
+		}
+	}
+
+	if (personParts.length > 0) {
+		parts.push(personParts.join(', ') + '.');
+	}
+
+	// Company factors
+	const companyParts: string[] = [];
+
+	if (company.revenue !== undefined) {
+		const revenueStr = formatRevenue(company.revenue);
+		if (breakdown.revenue_score >= 80) {
+			companyParts.push(`hög omsättning (${revenueStr})`);
+		} else if (breakdown.revenue_score >= 50) {
+			companyParts.push(`omsättning ${revenueStr}`);
+		} else {
+			companyParts.push(`låg omsättning (${revenueStr})`);
+		}
+	}
+
+	if (company.industry && factorsUsed.includes('industry')) {
+		if (breakdown.industry_score >= 80) {
+			companyParts.push(`prioriterad bransch (${company.industry})`);
+		} else {
+			companyParts.push(`bransch: ${company.industry}`);
+		}
+	}
+
+	if (company.cagr_3y !== undefined) {
+		const growthPercent = Math.round(company.cagr_3y * 100);
+		if (breakdown.growth_score >= 80) {
+			companyParts.push(`stark tillväxt (${growthPercent}%)`);
+		} else if (breakdown.growth_score <= 30) {
+			companyParts.push(`negativ tillväxt (${growthPercent}%)`);
+		}
+	}
+
+	if (company.distance_km !== undefined) {
+		if (breakdown.distance_score >= 80) {
+			companyParts.push(`nära (${Math.round(company.distance_km)} km)`);
+		} else if (breakdown.distance_score <= 30) {
+			companyParts.push(`långt avstånd (${Math.round(company.distance_km)} km)`);
+		}
+	}
+
+	if (companyParts.length > 0) {
+		parts.push('Företag: ' + companyParts.join(', ') + '.');
+	}
+
+	return parts.join(' ');
+}
+
 export function calculateScore(person: PersonInput, company: CompanyInput): ScoringResult {
 	const warnings: string[] = [];
 	const factorsUsed: string[] = [];
@@ -110,9 +199,6 @@ export function calculateScore(person: PersonInput, company: CompanyInput): Scor
 	// Calculate person scores
 	const roleScore = calculateRoleScore(person.functions || []);
 	if (person.functions?.length) factorsUsed.push('functions');
-
-	const relationshipScore = calculateRelationshipScore(person.relationship_strength);
-	if (person.relationship_strength) factorsUsed.push('relationship_strength');
 
 	const engagementScore = calculateEngagementScore(person.activities_90d);
 	if (person.activities_90d !== undefined) factorsUsed.push('activities_90d');
@@ -144,7 +230,6 @@ export function calculateScore(person: PersonInput, company: CompanyInput): Scor
 	// Calculate weighted person score
 	const personScore = Math.round(
 		roleScore * SCORING_CONFIG.personFactors.role +
-		relationshipScore * SCORING_CONFIG.personFactors.relationship +
 		engagementScore * SCORING_CONFIG.personFactors.engagement
 	);
 
@@ -165,23 +250,27 @@ export function calculateScore(person: PersonInput, company: CompanyInput): Scor
 
 	const tier = determineTier(combinedScore);
 
+	const breakdown: ScoreBreakdown = {
+		role_score: roleScore,
+		engagement_score: engagementScore,
+		revenue_score: revenueScore,
+		growth_score: growthScore,
+		industry_score: industryScore,
+		distance_score: distanceScore,
+		existing_score: existingScore
+	};
+
+	const reason = generateScoreReason(tier, breakdown, person, company, factorsUsed);
+
 	return {
 		person_score: personScore,
 		company_score: companyScore,
 		combined_score: combinedScore,
 		tier,
-		breakdown: {
-			role_score: roleScore,
-			relationship_score: relationshipScore,
-			engagement_score: engagementScore,
-			revenue_score: revenueScore,
-			growth_score: growthScore,
-			industry_score: industryScore,
-			distance_score: distanceScore,
-			existing_score: existingScore
-		},
+		breakdown,
 		factors_used: factorsUsed,
-		warnings
+		warnings,
+		reason
 	};
 }
 

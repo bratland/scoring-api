@@ -11,7 +11,6 @@
 				body: JSON.stringify({
 					person: {
 						functions: ['CEO'],
-						relationship_strength: 'We know each other',
 						activities_90d: 15
 					},
 					company: {

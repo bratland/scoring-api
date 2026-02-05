@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  * in the SvelteKit environment. Those are better tested with Playwright.
  */
 
-import { POST as postScorePerson, GET as getScorePerson } from '../../routes/api/score/person/+server';
+import { POST as postScorePerson } from '../../routes/api/score/person/+server';
 import { POST as postScoreBulk } from '../../routes/api/score/bulk/+server';
 import { GET as getScoreConfig } from '../../routes/api/score/config/+server';
 
@@ -25,7 +25,6 @@ describe('Scoring API Endpoints', () => {
 				body: JSON.stringify({
 					person: {
 						functions: ['CEO'],
-						relationship_strength: 'We know each other',
 						activities_90d: 15
 					},
 					company: {
@@ -54,7 +53,6 @@ describe('Scoring API Endpoints', () => {
 				body: JSON.stringify({
 					person: {
 						functions: ['CEO'],
-						relationship_strength: 'We know each other',
 						activities_90d: 25
 					},
 					company: {
@@ -130,29 +128,6 @@ describe('Scoring API Endpoints', () => {
 			const response = await postScorePerson({ request } as any);
 
 			expect(response.status).toBe(400);
-		});
-	});
-
-	describe('GET /api/score/person', () => {
-		it('should score via query params', async () => {
-			const url = new URL('http://localhost/api/score/person?functions=CEO&revenue=50000000');
-
-			const response = await getScorePerson({ url } as any);
-			const data = await response.json();
-
-			expect(response.status).toBe(200);
-			expect(data).toHaveProperty('tier');
-			expect(data).toHaveProperty('combined_score');
-		});
-
-		it('should handle multiple functions', async () => {
-			const url = new URL('http://localhost/api/score/person?functions=CEO,Sales&revenue=50000000');
-
-			const response = await getScorePerson({ url } as any);
-			const data = await response.json();
-
-			expect(response.status).toBe(200);
-			expect(data.breakdown.role_score).toBe(100); // CEO is highest
 		});
 	});
 

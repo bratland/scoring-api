@@ -171,7 +171,6 @@
 				body: JSON.stringify({
 					person: {
 						functions: functions ? functions.split(',').map(f => f.trim()) : [],
-						relationship_strength: relationshipStrength || undefined,
 						activities_90d: engagement?.total ?? activityCount
 					},
 					company: {

@@ -13,7 +13,7 @@ const openApiSpec = {
 	},
 	servers: [
 		{
-			url: 'https://scoring-api.vercel.app',
+			url: 'https://scoring-api-seven.vercel.app',
 			description: 'Production'
 		},
 		{
@@ -40,7 +40,6 @@ const openApiSpec = {
 							example: {
 								person: {
 									functions: ['CEO'],
-									relationship_strength: 'We know each other',
 									activities_90d: 5
 								},
 								company: {
@@ -67,30 +66,6 @@ const openApiSpec = {
 						content: {
 							'application/json': {
 								schema: { $ref: '#/components/schemas/Error' }
-							}
-						}
-					}
-				}
-			},
-			get: {
-				tags: ['Scoring'],
-				summary: 'Calculate score via query parameters',
-				description: 'Simple GET endpoint for testing scoring calculations.',
-				operationId: 'scorePersonGet',
-				parameters: [
-					{ name: 'functions', in: 'query', schema: { type: 'string' }, description: 'Comma-separated roles (CEO,CFO)' },
-					{ name: 'relationship', in: 'query', schema: { type: 'string' }, description: 'Relationship strength' },
-					{ name: 'activities', in: 'query', schema: { type: 'integer' }, description: 'Activity count (90 days)' },
-					{ name: 'revenue', in: 'query', schema: { type: 'number' }, description: 'Company revenue in SEK' },
-					{ name: 'cagr', in: 'query', schema: { type: 'number' }, description: 'CAGR 3-year (0.15 = 15%)' },
-					{ name: 'industry', in: 'query', schema: { type: 'string' }, description: 'Industry name' }
-				],
-				responses: {
-					'200': {
-						description: 'Scoring result',
-						content: {
-							'application/json': {
-								schema: { $ref: '#/components/schemas/ScoringResult' }
 							}
 						}
 					}
@@ -301,11 +276,6 @@ const openApiSpec = {
 						items: { type: 'string' },
 						description: 'Roles/functions (CEO, CFO, COO, CTO, CMO, Sales, Marketing, Operations, Finance, HR, IT, Legal)',
 						example: ['CEO']
-					},
-					relationship_strength: {
-						type: 'string',
-						enum: ['We know each other', "We've heard of each other", 'Weak', 'None'],
-						description: 'Strength of relationship with the person'
 					},
 					activities_90d: {
 						type: 'integer',

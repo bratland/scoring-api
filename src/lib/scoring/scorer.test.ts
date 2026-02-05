@@ -7,7 +7,6 @@ describe('scorer', () => {
 			it('should return GOLD tier for high scores', () => {
 				const person: PersonInput = {
 					functions: ['CEO'],
-					relationship_strength: 'We know each other',
 					activities_90d: 25
 				};
 				const company: CompanyInput = {
@@ -27,7 +26,6 @@ describe('scorer', () => {
 			it('should return SILVER tier for medium scores', () => {
 				const person: PersonInput = {
 					functions: ['Operations'],
-					relationship_strength: "We've heard of each other",
 					activities_90d: 5
 				};
 				const company: CompanyInput = {
@@ -79,13 +77,6 @@ describe('scorer', () => {
 				const result = calculateScore({ functions: ['UnknownRole'] }, {});
 
 				expect(result.breakdown.role_score).toBe(40); // Default for unknown
-			});
-
-			it('should score strong relationship highest', () => {
-				const strong = calculateScore({ relationship_strength: 'We know each other' }, {});
-				const weak = calculateScore({ relationship_strength: 'Weak' }, {});
-
-				expect(strong.breakdown.relationship_score).toBeGreaterThan(weak.breakdown.relationship_score);
 			});
 
 			it('should score high engagement highest', () => {
@@ -147,6 +138,41 @@ describe('scorer', () => {
 			});
 		});
 
+		describe('score reason', () => {
+			it('should include tier in reason', () => {
+				const result = calculateScore(
+					{ functions: ['CEO'], activities_90d: 25 },
+					{ revenue: 150_000_000, cagr_3y: 0.25, industry: 'Tech', distance_km: 30 }
+				);
+
+				expect(result.reason).toContain('GOLD');
+			});
+
+			it('should mention role in reason', () => {
+				const result = calculateScore({ functions: ['CEO'] }, {});
+
+				expect(result.reason).toContain('CEO');
+			});
+
+			it('should mention high revenue when present', () => {
+				const result = calculateScore({}, { revenue: 150_000_000 });
+
+				expect(result.reason).toMatch(/omsättning|MSEK/i);
+			});
+
+			it('should note missing data in reason', () => {
+				const result = calculateScore({}, {});
+
+				expect(result.reason).toMatch(/saknas/i);
+			});
+
+			it('should mention target industry', () => {
+				const result = calculateScore({}, { industry: 'Tech' });
+
+				expect(result.reason).toMatch(/bransch|Tech/i);
+			});
+		});
+
 		describe('warnings', () => {
 			it('should warn when no role provided', () => {
 				const result = calculateScore({}, {});
@@ -175,7 +201,6 @@ describe('scorer', () => {
 				const result = calculateScore({}, {});
 
 				expect(result.breakdown.role_score).toBe(30); // None default
-				expect(result.breakdown.relationship_score).toBe(30);
 				expect(result.breakdown.engagement_score).toBe(10);
 			});
 
@@ -195,13 +220,12 @@ describe('scorer', () => {
 				const result = calculateScore(
 					{
 						functions: ['CEO'],      // 100
-						relationship_strength: 'We know each other',  // 100
 						activities_90d: 25       // 100
 					},
 					{}
 				);
 
-				// person_score = 100*0.4 + 100*0.3 + 100*0.3 = 100
+				// person_score = 100*0.55 + 100*0.45 = 100
 				expect(result.person_score).toBe(100);
 			});
 
@@ -209,7 +233,6 @@ describe('scorer', () => {
 				const result = calculateScore(
 					{
 						functions: ['CEO'],
-						relationship_strength: 'We know each other',
 						activities_90d: 25
 					},
 					{

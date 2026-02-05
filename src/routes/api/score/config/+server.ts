@@ -13,7 +13,6 @@ export const GET: RequestHandler = async () => {
 				body: {
 					person: {
 						functions: ['CEO', 'Sales'],
-						relationship_strength: 'We know each other',
 						activities_90d: 10
 					},
 					company: {
