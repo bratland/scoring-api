@@ -31,30 +31,3 @@ export const POST: RequestHandler = async ({ request }) => {
 	}
 };
 
-// Also support GET with query params for simple testing
-export const GET: RequestHandler = async ({ url }) => {
-	const functions = url.searchParams.get('functions')?.split(',') || [];
-	const relationship = url.searchParams.get('relationship') || undefined;
-	const activities = url.searchParams.get('activities');
-	const revenue = url.searchParams.get('revenue');
-	const cagr = url.searchParams.get('cagr');
-	const industry = url.searchParams.get('industry') || undefined;
-	const companyScore = url.searchParams.get('score');
-
-	const person: PersonInput = {
-		functions: functions.length > 0 ? functions : undefined,
-		relationship_strength: relationship,
-		activities_90d: activities ? parseInt(activities, 10) : undefined
-	};
-
-	const company: CompanyInput = {
-		revenue: revenue ? parseFloat(revenue) : undefined,
-		cagr_3y: cagr ? parseFloat(cagr) : undefined,
-		industry,
-		score: companyScore ? parseFloat(companyScore) : undefined
-	};
-
-	const result = calculateScore(person, company);
-
-	return json(result);
-};

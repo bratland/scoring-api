@@ -9,6 +9,7 @@ export interface TicCompanyData {
 	revenue?: number;          // rs_NetSalesK (in thousands SEK)
 	cagr3y?: number;           // 3-year compound annual growth rate
 	employees?: number;        // fn_NumberOfEmployees
+	personnelCosts?: number;   // rs_PersonnelCostsK (in thousands SEK)
 	creditScore?: number;      // 0-100
 	sniCode?: string;          // Industry classification
 	sniDescription?: string;   // Industry name
@@ -51,6 +52,7 @@ export interface TicFinancialPeriod {
 	periodStart: string;
 	periodEnd: string;
 	rs_NetSalesK?: number;
+	rs_PersonnelCostsK?: number;     // Personnel/salary costs in thousands SEK
 	fn_NumberOfEmployees?: number;
 	km_EquityAssetsRatio?: number;
 	km_NetProfitMargin?: number;

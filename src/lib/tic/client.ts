@@ -60,12 +60,27 @@ export class TicClient {
 	 *
 	 * @param orgNumber Swedish organization number (XXXXXX-XXXX or XXXXXXXXXX)
 	 * @param cachedData Previously cached TIC data from Pipedrive
+	 * @param companyName Optional company name for fallback search
 	 * @returns Company data (from cache or fresh from TIC)
 	 */
 	async getCompanyData(
-		orgNumber: string,
-		cachedData?: TicCachedData | null
+		orgNumber: string | undefined,
+		cachedData?: TicCachedData | null,
+		companyName?: string
 	): Promise<TicApiResponse<TicCompanyData>> {
+		// If no org number, try searching by name
+		if (!orgNumber && companyName) {
+			return this.getCompanyDataByName(companyName);
+		}
+
+		if (!orgNumber) {
+			return {
+				success: false,
+				data: null,
+				error: 'No organization number or company name provided'
+			};
+		}
+
 		// Normalize org number (remove dashes)
 		const normalizedOrgNumber = orgNumber.replace(/-/g, '');
 
@@ -117,6 +132,7 @@ export class TicClient {
 			let revenue: number | undefined;
 			let cagr3y: number | undefined;
 			let employees: number | undefined;
+			let personnelCosts: number | undefined;
 			let creditScore: number | undefined;
 
 			try {
@@ -131,16 +147,26 @@ export class TicClient {
 						new Date(b.periodEnd).getTime() - new Date(a.periodEnd).getTime()
 					);
 
-					// Latest revenue (in thousands SEK)
+					// Latest financial data (in thousands SEK)
 					revenue = sorted[0].rs_NetSalesK;
 					employees = sorted[0].fn_NumberOfEmployees;
+					personnelCosts = sorted[0].rs_PersonnelCostsK;
 
-					// Calculate 3-year CAGR if we have enough data
-					if (sorted.length >= 4) {
-						const latestRevenue = sorted[0].rs_NetSalesK;
-						const oldestRevenue = sorted[3].rs_NetSalesK; // 3 years ago
-						if (latestRevenue && oldestRevenue && oldestRevenue > 0) {
-							cagr3y = Math.pow(latestRevenue / oldestRevenue, 1 / 3) - 1;
+					// Calculate CAGR - prefer 3 years, fallback to 2 years
+					const latestRevenue = sorted[0].rs_NetSalesK;
+					if (latestRevenue && latestRevenue > 0) {
+						if (sorted.length >= 3) {
+							// 3 periods = 2-year CAGR
+							const oldRevenue = sorted[2].rs_NetSalesK;
+							if (oldRevenue && oldRevenue > 0) {
+								cagr3y = Math.pow(latestRevenue / oldRevenue, 1 / 2) - 1;
+							}
+						} else if (sorted.length >= 2) {
+							// 2 periods = 1-year growth
+							const oldRevenue = sorted[1].rs_NetSalesK;
+							if (oldRevenue && oldRevenue > 0) {
+								cagr3y = (latestRevenue / oldRevenue) - 1;
+							}
 						}
 					}
 				}
@@ -158,6 +184,7 @@ export class TicClient {
 				revenue,
 				cagr3y,
 				employees: employees ?? searchData.employees,
+				personnelCosts,
 				creditScore,
 				sniCode: searchData.sniCode,
 				sniDescription: searchData.sniDescription,
@@ -214,6 +241,194 @@ export class TicClient {
 			ticLongitude: data.longitude,
 			ticUpdated: data.fetchedAt
 		};
+	}
+
+	/**
+	 * Get company data by name (fallback when org number is not available)
+	 */
+	private async getCompanyDataByName(companyName: string): Promise<TicApiResponse<TicCompanyData>> {
+		try {
+			const searchResult = await this.searchCompanyByName(companyName);
+			if (!searchResult.success || !searchResult.data) {
+				return {
+					success: false,
+					data: null,
+					error: searchResult.error || 'Company not found by name'
+				};
+			}
+
+			const companyId = searchResult.data.companyId;
+			const searchData = searchResult.data;
+			const orgNumber = searchResult.data.registrationNumber;
+
+			// Fetch financial history and credit score
+			let revenue: number | undefined;
+			let cagr3y: number | undefined;
+			let employees: number | undefined;
+			let personnelCosts: number | undefined;
+			let creditScore: number | undefined;
+
+			try {
+				const [financials, credit] = await Promise.all([
+					this.getFinancialHistory(companyId),
+					this.getCreditInfo(companyId)
+				]);
+
+				if (financials.data && financials.data.length > 0) {
+					const sorted = [...financials.data].sort((a, b) =>
+						new Date(b.periodEnd).getTime() - new Date(a.periodEnd).getTime()
+					);
+					revenue = sorted[0].rs_NetSalesK;
+					employees = sorted[0].fn_NumberOfEmployees;
+					personnelCosts = sorted[0].rs_PersonnelCostsK;
+
+					// Calculate CAGR - prefer 3 years, fallback to 2 years
+					const latestRev = sorted[0].rs_NetSalesK;
+					if (latestRev && latestRev > 0) {
+						if (sorted.length >= 3) {
+							const oldRev = sorted[2].rs_NetSalesK;
+							if (oldRev && oldRev > 0) {
+								cagr3y = Math.pow(latestRev / oldRev, 1 / 2) - 1;
+							}
+						} else if (sorted.length >= 2) {
+							const oldRev = sorted[1].rs_NetSalesK;
+							if (oldRev && oldRev > 0) {
+								cagr3y = (latestRev / oldRev) - 1;
+							}
+						}
+					}
+				}
+
+				creditScore = credit.data?.score;
+			} catch {
+				employees = searchData.employees;
+			}
+
+			const companyData: TicCompanyData = {
+				companyId,
+				orgNumber: orgNumber || '',
+				name: searchData.name,
+				revenue,
+				cagr3y,
+				employees: employees ?? searchData.employees,
+				personnelCosts,
+				creditScore,
+				sniCode: searchData.sniCode,
+				sniDescription: searchData.sniDescription,
+				latitude: searchData.latitude,
+				longitude: searchData.longitude,
+				fetchedAt: new Date().toISOString()
+			};
+
+			// Store in Redis cache for future requests
+			if (orgNumber) {
+				await setTicCache(orgNumber, companyData);
+			}
+
+			return {
+				success: true,
+				data: companyData
+			};
+
+		} catch (error) {
+			return {
+				success: false,
+				data: null,
+				error: error instanceof Error ? error.message : 'Unknown error'
+			};
+		}
+	}
+
+	/**
+	 * Search for company by name
+	 */
+	private async searchCompanyByName(companyName: string): Promise<TicApiResponse<TicCompanySearchResult>> {
+		const url = `${TIC_API_BASE}/search/companies?q=${encodeURIComponent(companyName)}&query_by=names.nameOrIdentifier`;
+
+		try {
+			const response = await fetch(url, {
+				headers: {
+					'x-api-key': this.apiKey,
+					'Accept': 'application/json'
+				}
+			});
+
+			if (!response.ok) {
+				return {
+					success: false,
+					data: null,
+					error: `TIC API error: ${response.status}`
+				};
+			}
+
+			const data = await response.json();
+
+			if (!data.hits || data.hits.length === 0) {
+				return {
+					success: false,
+					data: null,
+					error: 'Company not found'
+				};
+			}
+
+			// Find best match (exact or closest match)
+			const normalizedSearch = companyName.toLowerCase().replace(/\s+ab$/i, '').trim();
+			let bestMatch = data.hits[0];
+
+			for (const hit of data.hits) {
+				const doc = hit.document;
+				for (const nameObj of doc.names || []) {
+					const name = (nameObj.nameOrIdentifier || nameObj.text || '').toLowerCase();
+					const normalizedName = name.replace(/\s+ab$/i, '').trim();
+					if (normalizedName === normalizedSearch) {
+						bestMatch = hit;
+						break;
+					}
+				}
+			}
+
+			const doc = bestMatch.document;
+			const primaryName = doc.names?.find((n: { isPrimary?: boolean }) => n.isPrimary)?.nameOrIdentifier
+				|| doc.names?.[0]?.nameOrIdentifier
+				|| doc.names?.[0]?.text;
+
+			const workplace = doc.currentWorkplaces?.[0];
+			let latitude: number | undefined;
+			let longitude: number | undefined;
+
+			if (workplace?.location && Array.isArray(workplace.location)) {
+				latitude = workplace.location[0];
+				longitude = workplace.location[1];
+			} else if (workplace) {
+				latitude = workplace.latitude;
+				longitude = workplace.longitude;
+			}
+
+			const employees = this.parseEmployees(doc.cNbrEmployeesInterval);
+			const primarySni = doc.sniCodes?.find((s: { rank?: number; sni_2007Code?: string }) =>
+				s.rank === 1 && s.sni_2007Code
+			) || doc.sniCodes?.[0];
+
+			return {
+				success: true,
+				data: {
+					companyId: String(doc.companyId),
+					registrationNumber: doc.registrationNumber,
+					name: primaryName,
+					latitude,
+					longitude,
+					sniCode: primarySni?.sni_2007Code || primarySni?.code,
+					sniDescription: primarySni?.sni_2007Name || primarySni?.name,
+					employees
+				}
+			};
+		} catch (error) {
+			return {
+				success: false,
+				data: null,
+				error: error instanceof Error ? error.message : 'Search failed'
+			};
+		}
 	}
 
 	/**

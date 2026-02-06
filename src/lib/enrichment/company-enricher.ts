@@ -1,11 +1,12 @@
 /**
  * Company Data Enricher
  *
- * Combines TIC.io data with Pipedrive caching.
- * CRITICAL: Always checks cache before calling TIC API (1000 calls/month limit)
+ * Enriches Pipedrive organizations with TIC.io company data.
+ * TIC client handles Redis caching to stay within 1000 calls/month limit.
+ * Results are saved to existing Pipedrive fields.
  */
 
-import { TicClient, distanceToGothenburg, type TicCompanyData, type TicCachedData } from '../tic';
+import { TicClient, distanceToGothenburg, type TicCompanyData } from '../tic';
 import { PipedriveClient } from '../pipedrive/client';
 import { geocodeCity, isCityInCache } from '../geo';
 
@@ -20,6 +21,8 @@ export interface EnrichedCompanyData {
 	revenue?: number;           // In SEK (converted from thousands)
 	cagr3y?: number;            // 3-year compound annual growth rate
 	employees?: number;
+	personnelCosts?: number;    // Total personnel costs in SEK
+	hourlyLaborCost?: number;   // Calculated: personnelCosts / employees / workingHours
 	creditScore?: number;
 	sniCode?: string;
 	industry?: string;          // SNI description / industry name
@@ -34,29 +37,38 @@ export interface EnrichedCompanyData {
 export interface TicFieldMapping {
 	orgNumber: string;          // Field key for organization number
 	city: string;               // Field key for city (fallback for geocoding)
-	ticCompanyId: string;
-	ticRevenue: string;
-	ticEmployees: string;
-	ticCreditScore: string;
-	ticSni: string;
-	ticLatitude: string;
-	ticLongitude: string;
-	ticUpdated: string;
+	revenue: string;            // Omsättning
+	employees: string;          // Antal anställda (system field)
+	sniCode: string;            // SNI-Kod
+	industry: string;           // Industry (Official)
+	cagr3y: string;             // CAGR 3Y
+	distanceGbg: string;        // Avstånd GBG
+	personnelCostPerEmployee: string;  // Personalkostnader per anställd
+	score: string;              // Score
+	companyScore: string;       // Company Score (0-100)
+	companyScoreReason: string; // Company Score Reason (Swedish text)
+	ticUpdated: string;         // TIC Uppdaterad (timestamp)
 }
 
-// Default field names - will need to be mapped to actual Pipedrive field keys
+// Default field names - mapped to existing Pipedrive field names
 export const DEFAULT_TIC_FIELD_NAMES: Record<keyof TicFieldMapping, string> = {
 	orgNumber: 'Organisationsnummer',
-	city: 'Ort',  // Standard Pipedrive address field or custom field
-	ticCompanyId: 'TIC Company ID',
-	ticRevenue: 'TIC Omsättning',
-	ticEmployees: 'TIC Anställda',
-	ticCreditScore: 'TIC Kreditbetyg',
-	ticSni: 'TIC SNI',
-	ticLatitude: 'TIC Latitude',
-	ticLongitude: 'TIC Longitude',
+	city: 'Ort',
+	revenue: 'Omsättning',
+	employees: 'Antal anställda',
+	sniCode: 'SNI-Kod',
+	industry: 'Industry (Official)',
+	cagr3y: 'CAGR 3Y',
+	distanceGbg: 'Avstånd GBG',
+	personnelCostPerEmployee: 'Personalkostnader per anställd (enligt ÅR)',
+	score: 'Score',
+	companyScore: 'Company Score',
+	companyScoreReason: 'Company Score Reason',
 	ticUpdated: 'TIC Uppdaterad'
 };
+
+// Standard Swedish working hours per year (40h/week * 43 weeks after vacation/holidays)
+const WORKING_HOURS_PER_YEAR = 1720;
 
 export class CompanyEnricher {
 	private ticClient: TicClient;
@@ -77,6 +89,7 @@ export class CompanyEnricher {
 
 	/**
 	 * Get enriched company data for a Pipedrive organization
+	 * TIC client handles caching via Redis - we just save results to Pipedrive
 	 *
 	 * @param orgId Pipedrive organization ID
 	 * @param orgData Optional pre-fetched organization data
@@ -100,37 +113,15 @@ export class CompanyEnricher {
 
 		const orgName = orgData.name as string | undefined;
 
-		// Extract cached TIC data from Pipedrive
-		const cachedData = this.extractCachedData(orgData);
-
 		// Extract org number and city (for geocoding fallback)
 		const orgNumber = this.findFieldValue(orgData, 'orgNumber') as string | undefined;
 		const city = this.extractCity(orgData);
 
-		// If no org number, try to at least get distance from city
-		if (!orgNumber) {
-			const distance = await this.calculateDistanceWithFallback(undefined, undefined, city);
-			return {
-				pipedriveOrgId: orgId,
-				name: orgName,
-				distanceToGothenburg: distance,
-				dataSource: 'pipedrive'
-			};
-		}
-
-		// Check if cache is fresh
-		if (cachedData && this.ticClient.isCacheFresh(cachedData)) {
-			return this.buildEnrichedDataAsync(orgId, orgName, orgNumber, cachedData, city, 'cache');
-		}
-
-		// Cache miss - fetch from TIC API
-		const ticResult = await this.ticClient.getCompanyData(orgNumber, cachedData);
+		// Fetch from TIC (client handles Redis caching internally)
+		const ticResult = await this.ticClient.getCompanyData(orgNumber, null, orgName);
 
 		if (!ticResult.success || !ticResult.data) {
-			// TIC fetch failed - use stale cache if available, otherwise Pipedrive data
-			if (cachedData?.ticUpdated) {
-				return this.buildEnrichedDataAsync(orgId, orgName, orgNumber, cachedData, city, 'cache');
-			}
+			// TIC fetch failed - return basic Pipedrive data with distance
 			const distance = await this.calculateDistanceWithFallback(undefined, undefined, city);
 			return {
 				pipedriveOrgId: orgId,
@@ -141,11 +132,19 @@ export class CompanyEnricher {
 			};
 		}
 
-		// Update Pipedrive cache with fresh TIC data
-		await this.updateCache(orgId, ticResult.data);
+		// Build enriched data from TIC response (calculates distance)
+		const enrichedData = await this.buildEnrichedDataFromTicAsync(
+			orgId,
+			orgName,
+			ticResult.data.orgNumber || orgNumber || '',
+			ticResult.data,
+			city
+		);
 
-		// Build enriched data from fresh TIC response
-		return this.buildEnrichedDataFromTicAsync(orgId, orgName, orgNumber, ticResult.data, city);
+		// Update Pipedrive with TIC data including distance
+		await this.updateCache(orgId, ticResult.data, enrichedData.distanceToGothenburg);
+
+		return enrichedData;
 	}
 
 	/**
@@ -178,25 +177,6 @@ export class CompanyEnricher {
 		if (locality) return locality;
 
 		return undefined;
-	}
-
-	/**
-	 * Extract cached TIC data from Pipedrive organization record
-	 */
-	private extractCachedData(orgData: Record<string, unknown>): TicCachedData | null {
-		const ticUpdated = this.findFieldValue(orgData, 'ticUpdated');
-		if (!ticUpdated) return null;
-
-		return {
-			ticCompanyId: this.findFieldValue(orgData, 'ticCompanyId') as string | undefined,
-			ticRevenue: this.parseNumber(this.findFieldValue(orgData, 'ticRevenue')),
-			ticEmployees: this.parseNumber(this.findFieldValue(orgData, 'ticEmployees')),
-			ticCreditScore: this.parseNumber(this.findFieldValue(orgData, 'ticCreditScore')),
-			ticSni: this.findFieldValue(orgData, 'ticSni') as string | undefined,
-			ticLatitude: this.parseNumber(this.findFieldValue(orgData, 'ticLatitude')),
-			ticLongitude: this.parseNumber(this.findFieldValue(orgData, 'ticLongitude')),
-			ticUpdated: ticUpdated as string
-		};
 	}
 
 	/**
@@ -237,32 +217,74 @@ export class CompanyEnricher {
 	}
 
 	/**
-	 * Update Pipedrive organization with fresh TIC data
+	 * Calculate hourly labor cost from personnel costs and employee count
 	 */
-	private async updateCache(orgId: number, ticData: TicCompanyData): Promise<void> {
+	private calculateHourlyLaborCost(personnelCosts?: number, employees?: number): number | undefined {
+		if (!personnelCosts || !employees || employees === 0) return undefined;
+		// personnelCosts is in thousands SEK, convert to SEK then divide by employees and hours
+		return (personnelCosts * 1000) / employees / WORKING_HOURS_PER_YEAR;
+	}
+
+	/**
+	 * Update Pipedrive organization with fresh TIC data
+	 * Uses existing Pipedrive fields instead of TIC-specific fields
+	 */
+	private async updateCache(orgId: number, ticData: TicCompanyData, distanceToGothenburg?: number): Promise<void> {
 		if (!this.fieldMapping) {
 			console.warn('No field mapping set - cannot update Pipedrive cache');
 			return;
 		}
 
-		const updates: Record<string, unknown> = {
-			[this.fieldMapping.ticCompanyId]: ticData.companyId,
-			[this.fieldMapping.ticRevenue]: ticData.revenue,
-			[this.fieldMapping.ticEmployees]: ticData.employees,
-			[this.fieldMapping.ticCreditScore]: ticData.creditScore,
-			[this.fieldMapping.ticSni]: ticData.sniCode,
-			[this.fieldMapping.ticLatitude]: ticData.latitude,
-			[this.fieldMapping.ticLongitude]: ticData.longitude,
-			[this.fieldMapping.ticUpdated]: ticData.fetchedAt
-		};
+		// Calculate hourly labor cost
+		const hourlyLaborCost = this.calculateHourlyLaborCost(ticData.personnelCosts, ticData.employees);
 
-		// Remove undefined values
+		const updates: Record<string, unknown> = {};
+
+		// Map TIC data to existing Pipedrive fields
+		if (ticData.orgNumber && this.fieldMapping.orgNumber) {
+			updates[this.fieldMapping.orgNumber] = ticData.orgNumber;
+		}
+		if (ticData.revenue !== undefined && ticData.revenue > 0 && this.fieldMapping.revenue) {
+			// Revenue field is monetary - needs value and currency
+			// TIC gives thousands SEK, convert to SEK
+			updates[this.fieldMapping.revenue] = ticData.revenue * 1000;
+			updates[this.fieldMapping.revenue + '_currency'] = 'SEK';
+		}
+		if (ticData.sniCode && this.fieldMapping.sniCode) {
+			updates[this.fieldMapping.sniCode] = ticData.sniCode;
+		}
+		if (ticData.sniDescription && this.fieldMapping.industry) {
+			updates[this.fieldMapping.industry] = ticData.sniDescription;
+		}
+		if (ticData.cagr3y !== undefined && this.fieldMapping.cagr3y) {
+			// CAGR as decimal (0.15 = 15%)
+			updates[this.fieldMapping.cagr3y] = ticData.cagr3y;
+		}
+		if (distanceToGothenburg !== undefined && this.fieldMapping.distanceGbg) {
+			updates[this.fieldMapping.distanceGbg] = Math.round(distanceToGothenburg);
+		}
+		if (hourlyLaborCost !== undefined && this.fieldMapping.personnelCostPerEmployee) {
+			// Hourly cost field is monetary - needs value and currency
+			updates[this.fieldMapping.personnelCostPerEmployee] = Math.round(hourlyLaborCost);
+			updates[this.fieldMapping.personnelCostPerEmployee + '_currency'] = 'SEK';
+		}
+		if (ticData.fetchedAt && this.fieldMapping.ticUpdated) {
+			updates[this.fieldMapping.ticUpdated] = ticData.fetchedAt;
+		}
+
+		// Remove undefined values and empty updates
 		for (const key of Object.keys(updates)) {
-			if (updates[key] === undefined) {
+			if (updates[key] === undefined || updates[key] === null) {
 				delete updates[key];
 			}
 		}
 
+		if (Object.keys(updates).length === 0) {
+			console.log('No updates to apply for organization', orgId);
+			return;
+		}
+
+		console.log(`Updating org ${orgId} with:`, Object.keys(updates).join(', '));
 		await this.pipedriveClient.updateOrganization(orgId, updates);
 	}
 
@@ -304,46 +326,6 @@ export class CompanyEnricher {
 	}
 
 	/**
-	 * Build enriched data from cached TIC data (async - uses geocoding fallback)
-	 */
-	private async buildEnrichedDataAsync(
-		orgId: number,
-		name: string | undefined,
-		orgNumber: string,
-		cached: TicCachedData,
-		city: string | undefined,
-		source: 'cache' | 'tic'
-	): Promise<EnrichedCompanyData> {
-		// Try to get distance - coordinates first, then geocoding fallback
-		const distance = await this.calculateDistanceWithFallback(
-			cached.ticLatitude,
-			cached.ticLongitude,
-			city
-		);
-
-		let cacheAge: number | undefined;
-		if (cached.ticUpdated) {
-			const cachedTime = new Date(cached.ticUpdated).getTime();
-			cacheAge = Math.floor((Date.now() - cachedTime) / (24 * 60 * 60 * 1000));
-		}
-
-		return {
-			pipedriveOrgId: orgId,
-			name,
-			orgNumber,
-			ticCompanyId: cached.ticCompanyId,
-			revenue: cached.ticRevenue ? cached.ticRevenue * 1000 : undefined, // Convert from thousands
-			employees: cached.ticEmployees,
-			creditScore: cached.ticCreditScore,
-			sniCode: cached.ticSni,
-			distanceToGothenburg: distance,
-			dataSource: source,
-			cacheAge,
-			lastUpdated: cached.ticUpdated
-		};
-	}
-
-	/**
 	 * Build enriched data from fresh TIC API response (async - uses geocoding fallback)
 	 */
 	private async buildEnrichedDataFromTicAsync(
@@ -360,6 +342,9 @@ export class CompanyEnricher {
 			city
 		);
 
+		// Calculate hourly labor cost if we have the data
+		const hourlyLaborCost = this.calculateHourlyLaborCost(ticData.personnelCosts, ticData.employees);
+
 		return {
 			pipedriveOrgId: orgId,
 			name: ticData.name || name,
@@ -368,6 +353,8 @@ export class CompanyEnricher {
 			revenue: ticData.revenue ? ticData.revenue * 1000 : undefined, // Convert from thousands
 			cagr3y: ticData.cagr3y,
 			employees: ticData.employees,
+			personnelCosts: ticData.personnelCosts ? ticData.personnelCosts * 1000 : undefined, // Convert from thousands
+			hourlyLaborCost,
 			creditScore: ticData.creditScore,
 			sniCode: ticData.sniCode,
 			industry: ticData.sniDescription,
@@ -376,5 +363,32 @@ export class CompanyEnricher {
 			cacheAge: 0,
 			lastUpdated: ticData.fetchedAt
 		};
+	}
+
+	/**
+	 * Store company score and reason in Pipedrive organization fields
+	 */
+	async updateCompanyScore(orgId: number, score: number, reason: string): Promise<void> {
+		if (!this.fieldMapping) {
+			console.warn('No field mapping set - cannot update company score');
+			return;
+		}
+
+		const updates: Record<string, unknown> = {};
+
+		if (this.fieldMapping.companyScore) {
+			updates[this.fieldMapping.companyScore] = Math.round(score);
+		}
+		if (this.fieldMapping.companyScoreReason) {
+			updates[this.fieldMapping.companyScoreReason] = reason;
+		}
+
+		if (Object.keys(updates).length === 0) {
+			console.warn('No company score fields mapped - cannot update');
+			return;
+		}
+
+		console.log(`Updating org ${orgId} company score: ${score}`);
+		await this.pipedriveClient.updateOrganization(orgId, updates);
 	}
 }

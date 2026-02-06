@@ -17,6 +17,9 @@ export const SCORING_CONFIG = {
 		// Below silver = bronze
 	},
 
+	// Pre-scoring: minimum company score to trigger TIC enrichment
+	preScoreThreshold: 25,
+
 	// Person scoring weights (must sum to 1.0)
 	personFactors: {
 		role: 0.55,

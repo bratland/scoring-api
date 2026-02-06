@@ -53,9 +53,8 @@ Rate limit state is updated from response headers:
 ## Scoring Model
 
 ### Person Score (60% of total)
-- Role/Function: 40%
-- Relationship Strength: 30%
-- Engagement (activities): 30%
+- Role/Function: 55%
+- Engagement (activities): 45%
 
 ### Company Score (40% of total)
 - Revenue: 25%
