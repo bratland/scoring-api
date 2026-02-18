@@ -54,10 +54,15 @@ function calculateGrowthScore(cagr: number | undefined): number {
 function calculateIndustryScore(industry: string | undefined): number {
 	if (!industry) return 50;
 	const normalizedIndustry = industry.toLowerCase();
-	const isTarget = SCORING_CONFIG.targetIndustries.some(
-		target => normalizedIndustry.includes(target.toLowerCase())
-	);
-	return isTarget ? 90 : 50;
+
+	for (const tier of SCORING_CONFIG.industryTiers) {
+		const isMatch = tier.industries.some(
+			(target: string) => normalizedIndustry.includes(target.toLowerCase())
+		);
+		if (isMatch) return tier.score;
+	}
+
+	return SCORING_CONFIG.defaultIndustryScore;
 }
 
 function calculateDistanceScore(distance_km: number | undefined): number {

@@ -84,15 +84,22 @@ export const SCORING_CONFIG = {
 		{ min: -Infinity, score: 10 } // < -10%
 	],
 
-	// Target industries (high fit = high score)
-	targetIndustries: [
-		'Tech',
-		'IT',
-		'Consulting',
-		'Professional Services',
-		'Software',
-		'SaaS'
-	],
+	// Industry tiers (ordered by priority - first match wins)
+	// NOTE: TIC returns Swedish industry descriptions - include both Swedish and English keywords
+	industryTiers: [
+		{ name: 'Prioritet A', score: 100, industries: [
+			'Tech', 'IT', 'Software', 'SaaS',
+			'programvara', 'mjukvara', 'datakonsult', 'informationsteknik', 'datorprogrammering'
+		]},
+		{ name: 'Prioritet B', score: 75, industries: [
+			'Consulting', 'Professional Services', 'Finance', 'Insurance', 'Investment',
+			'konsult', 'rådgivning', 'finans', 'försäkring', 'invest', 'förvaltning', 'fondverksamhet'
+		]},
+		{ name: 'Prioritet C', score: 50, industries: [] }
+	] as Array<{ name: string; score: number; industries: string[] }>,
+
+	// Score for industries not matching any tier
+	defaultIndustryScore: 30,
 
 	// Engagement scoring (activities in last 90 days)
 	engagementTiers: [

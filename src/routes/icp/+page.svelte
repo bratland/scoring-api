@@ -1,6 +1,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 
+	interface IndustryTier {
+		name: string;
+		score: number;
+		industries: string[];
+	}
+
 	interface ICPConfig {
 		weights: { person: number; company: number };
 		tiers: { gold: number; silver: number };
@@ -8,7 +14,8 @@
 		companyFactors: { revenue: number; growth: number; industryFit: number; distance: number; existingScore: number };
 		roleScores: Record<string, number>;
 		relationshipScores: Record<string, number>;
-		targetIndustries: string[];
+		industryTiers: IndustryTier[];
+		defaultIndustryScore: number;
 		revenueTiers: Array<{ min: number; score: number }>;
 		growthTiers: Array<{ min: number; score: number }>;
 		engagementTiers: Array<{ min: number; score: number }>;
@@ -22,7 +29,7 @@
 	let isSaving = $state(false);
 	let message = $state<{ type: 'success' | 'error'; text: string } | null>(null);
 	let activeTab = $state<'weights' | 'roles' | 'industries' | 'tiers'>('weights');
-	let newIndustry = $state('');
+	let newIndustries = $state<Record<number, string>>({});
 	let newRole = $state('');
 	let newRoleScore = $state(50);
 
@@ -86,17 +93,29 @@
 		}
 	}
 
-	function addIndustry() {
-		if (!config || !newIndustry.trim()) return;
-		if (!config.targetIndustries.includes(newIndustry.trim())) {
-			config.targetIndustries = [...config.targetIndustries, newIndustry.trim()];
+	function addIndustryToTier(tierIndex: number) {
+		if (!config) return;
+		const value = newIndustries[tierIndex]?.trim();
+		if (!value) return;
+		if (!config.industryTiers[tierIndex].industries.includes(value)) {
+			config.industryTiers[tierIndex].industries = [...config.industryTiers[tierIndex].industries, value];
 		}
-		newIndustry = '';
+		newIndustries = { ...newIndustries, [tierIndex]: '' };
 	}
 
-	function removeIndustry(industry: string) {
+	function removeIndustryFromTier(tierIndex: number, industry: string) {
 		if (!config) return;
-		config.targetIndustries = config.targetIndustries.filter(i => i !== industry);
+		config.industryTiers[tierIndex].industries = config.industryTiers[tierIndex].industries.filter(i => i !== industry);
+	}
+
+	function addIndustryTier() {
+		if (!config) return;
+		config.industryTiers = [...config.industryTiers, { name: `Prioritet ${String.fromCharCode(65 + config.industryTiers.length)}`, score: 40, industries: [] }];
+	}
+
+	function removeIndustryTier(tierIndex: number) {
+		if (!config || config.industryTiers.length <= 1) return;
+		config.industryTiers = config.industryTiers.filter((_, i) => i !== tierIndex);
 	}
 
 	function addRole() {
@@ -413,34 +432,92 @@
 
 			<!-- INDUSTRIES TAB -->
 			{#if activeTab === 'industries'}
-				<div class="card p-6">
-					<h2 class="text-lg font-semibold mb-4">Mal-branscher</h2>
-					<p class="text-sm text-gray-500 mb-4">Foretag i dessa branscher far hogre bransch-poang.</p>
+				<div class="space-y-6">
+					<div class="card p-6">
+						<div class="flex justify-between items-center mb-4">
+							<div>
+								<h2 class="text-lg font-semibold">Bransch-nivaer</h2>
+								<p class="text-sm text-gray-500 mt-1">Foretag matchas mot den forsta nivan dar branschen passar. Hogre niva = hogre poang.</p>
+							</div>
+							<button onclick={addIndustryTier} class="btn-secondary text-sm">
+								+ Lagg till niva
+							</button>
+						</div>
 
-					<div class="flex flex-wrap gap-2 mb-6">
-						{#each config.targetIndustries as industry}
-							<span class="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-800 rounded-full">
-								{industry}
-								<button onclick={() => removeIndustry(industry)} class="text-blue-600 hover:text-blue-800">
-									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-									</svg>
-								</button>
-							</span>
-						{/each}
+						<div class="space-y-6">
+							{#each config.industryTiers as tier, tierIndex}
+								<div class="p-4 rounded-lg border {tierIndex === 0 ? 'bg-green-50 border-green-200' : tierIndex === 1 ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'}">
+									<div class="flex items-center gap-4 mb-3">
+										<input
+											type="text"
+											bind:value={config.industryTiers[tierIndex].name}
+											class="font-semibold text-sm bg-transparent border-b border-dashed border-gray-400 px-1 py-0.5 w-32"
+										/>
+										<div class="flex items-center gap-2">
+											<label class="text-sm text-gray-600">Poang:</label>
+											<input
+												type="number"
+												min="0"
+												max="100"
+												bind:value={config.industryTiers[tierIndex].score}
+												class="w-16 px-2 py-1 border rounded text-center text-sm"
+											/>
+										</div>
+										{#if config.industryTiers.length > 1}
+											<button onclick={() => removeIndustryTier(tierIndex)} class="ml-auto text-red-500 hover:text-red-700 text-sm">
+												Ta bort niva
+											</button>
+										{/if}
+									</div>
+
+									<div class="flex flex-wrap gap-2 mb-3">
+										{#each tier.industries as industry}
+											<span class="inline-flex items-center gap-1 px-3 py-1 {tierIndex === 0 ? 'bg-green-100 text-green-800' : tierIndex === 1 ? 'bg-blue-100 text-blue-800' : 'bg-gray-200 text-gray-700'} rounded-full text-sm">
+												{industry}
+												<button onclick={() => removeIndustryFromTier(tierIndex, industry)} class="hover:opacity-70">
+													<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+														<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+													</svg>
+												</button>
+											</span>
+										{/each}
+										{#if tier.industries.length === 0}
+											<span class="text-sm text-gray-400 italic">Inga branscher tillagda</span>
+										{/if}
+									</div>
+
+									<div class="flex gap-2">
+										<input
+											type="text"
+											bind:value={newIndustries[tierIndex]}
+											placeholder="Lagg till bransch..."
+											class="flex-1 px-3 py-1.5 border rounded-lg text-sm"
+											onkeydown={(e) => e.key === 'Enter' && addIndustryToTier(tierIndex)}
+										/>
+										<button onclick={() => addIndustryToTier(tierIndex)} class="px-3 py-1.5 bg-gray-700 text-white rounded-lg text-sm hover:bg-gray-800">
+											Lagg till
+										</button>
+									</div>
+								</div>
+							{/each}
+						</div>
 					</div>
 
-					<div class="flex gap-2">
-						<input
-							type="text"
-							bind:value={newIndustry}
-							placeholder="Ny bransch..."
-							class="flex-1 px-3 py-2 border rounded-lg"
-							onkeydown={(e) => e.key === 'Enter' && addIndustry()}
-						/>
-						<button onclick={addIndustry} class="btn-primary">
-							Lagg till
-						</button>
+					<!-- Default score for unmatched industries -->
+					<div class="card p-6">
+						<h3 class="text-md font-semibold mb-2">Ovriga branscher</h3>
+						<p class="text-sm text-gray-500 mb-3">Poang for foretag som inte matchar nagon niva ovan.</p>
+						<div class="flex items-center gap-3">
+							<input
+								type="range"
+								min="0"
+								max="100"
+								step="5"
+								bind:value={config.defaultIndustryScore}
+								class="flex-1"
+							/>
+							<span class="w-12 text-right font-mono">{config.defaultIndustryScore}</span>
+						</div>
 					</div>
 				</div>
 			{/if}

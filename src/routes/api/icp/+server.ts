@@ -29,7 +29,8 @@ interface ICPConfig {
 	};
 	roleScores: Record<string, number>;
 	relationshipScores: Record<string, number>;
-	targetIndustries: string[];
+	industryTiers: Array<{ name: string; score: number; industries: string[] }>;
+	defaultIndustryScore: number;
 	revenueTiers: Array<{ min: number; score: number }>;
 	growthTiers: Array<{ min: number; score: number }>;
 	engagementTiers: Array<{ min: number; score: number }>;
