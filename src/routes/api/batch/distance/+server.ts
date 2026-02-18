@@ -145,6 +145,7 @@ export const POST: RequestHandler = async ({ request }) => {
 					// In cacheOnly mode, skip cities not in pre-populated cache
 					if (cacheOnly && !isCityInCache(city)) {
 						geocodeFailed++;
+						send({ type: 'not_cached', orgId: org.id, name: org.name, city });
 						continue;
 					}
 
