@@ -102,25 +102,33 @@ export const POST: RequestHandler = async ({ request }) => {
 					client.getAllPersons()
 				]);
 
-				// 2. Filter orgs that have distance set
+				// 2. Filter orgs that have distance set and track distance values
 				const orgsWithDistance = new Map<number, Record<string, unknown>>();
+				const orgDistances = new Map<number, number>();
 				for (const org of allOrgs) {
 					const orgData = org as Record<string, unknown>;
 					const distance = orgData[distanceFieldKey] as number | null;
-					if (distance != null && distance > 0) {
+					if (distance != null && distance >= 0) {
 						orgsWithDistance.set(org.id, orgData);
+						orgDistances.set(org.id, distance);
 					}
 				}
 
-				// 3. Find persons linked to those orgs
-				const personsToScore = allPersons.filter(p => {
-					const orgId = extractOrgId(p.org_id);
-					return orgId != null && orgsWithDistance.has(orgId);
-				});
+				// 3. Find persons linked to those orgs, sorted by org distance (closest first)
+				const personsToScore = allPersons
+					.filter(p => {
+						const orgId = extractOrgId(p.org_id);
+						return orgId != null && orgsWithDistance.has(orgId);
+					})
+					.sort((a, b) => {
+						const distA = orgDistances.get(extractOrgId(a.org_id)!) ?? Infinity;
+						const distB = orgDistances.get(extractOrgId(b.org_id)!) ?? Infinity;
+						return distA - distB;
+					});
 
 				send({
 					type: 'status',
-					message: `Found ${orgsWithDistance.size} orgs with distance, ${personsToScore.length} persons to score`,
+					message: `Found ${orgsWithDistance.size} orgs with distance, ${personsToScore.length} persons to score (sorted closest to GBG first)`,
 					totalOrgs: orgsWithDistance.size,
 					totalPersons: personsToScore.length
 				});
@@ -266,6 +274,7 @@ export const POST: RequestHandler = async ({ request }) => {
 							personId: person.id,
 							name: person.name,
 							org: orgData.name,
+							distanceGbg: orgDistances.get(orgId) ?? null,
 							score: Math.round(scoreResult.combined_score),
 							tier: scoreResult.tier,
 							role: functions[0] || 'Unknown',
