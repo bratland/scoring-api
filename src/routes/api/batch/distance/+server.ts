@@ -2,7 +2,10 @@
  * Batch Distance Calculation
  *
  * Calculates distance to Gothenburg for all organizations and stores in Pipedrive.
- * No TIC or Perplexity API calls - uses only geocoding (pre-cached + Nominatim fallback).
+ * Uses three geocoding strategies in priority order:
+ * 1. Pre-cached Swedish cities (instant, free)
+ * 2. Google Maps Geocoding API on full address (fast, ~$5/1000 req)
+ * 3. Nominatim fallback on city name (slow, 1 req/sec)
  *
  * Streams progress as NDJSON so the request doesn't time out on large datasets.
  */
@@ -10,9 +13,10 @@
 import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
 import { PipedriveClient } from '$lib/pipedrive/client';
-import { geocodeCity, isCityInCache } from '$lib/geo';
+import { geocodeCity, geocodeAddress, isCityInCache, addToCache } from '$lib/geo';
+import type { GeocodingResult } from '$lib/geo';
 import { distanceToGothenburg } from '$lib/tic';
-import { DEFAULT_TIC_FIELD_NAMES, type TicFieldMapping } from '$lib/enrichment';
+import { DEFAULT_TIC_FIELD_NAMES } from '$lib/enrichment';
 import { json } from '@sveltejs/kit';
 
 // Countries, regions, and other non-city values to filter out
@@ -79,6 +83,42 @@ async function getDistanceFieldKey(client: PipedriveClient): Promise<string | nu
 	return null;
 }
 
+/**
+ * Try to geocode an org using all available strategies.
+ * Returns coordinates or null.
+ */
+async function geocodeOrg(
+	address: string | null,
+	city: string | null,
+	googleApiKey: string | null
+): Promise<{ result: GeocodingResult; source: string } | null> {
+	// Strategy 1: Cached city lookup (instant, free)
+	if (city && isCityInCache(city)) {
+		const result = await geocodeCity(city);
+		if (result) return { result, source: 'cache' };
+	}
+
+	// Strategy 2: Google Maps on full address (fast)
+	if (address && googleApiKey) {
+		const result = await geocodeAddress(address, { apiKey: googleApiKey });
+		if (result) {
+			// Cache the result by city name for future lookups
+			if (result.city) {
+				addToCache(result.city, result);
+			}
+			return { result, source: 'google' };
+		}
+	}
+
+	// Strategy 3: Nominatim on city name (slow, 1 req/sec)
+	if (city) {
+		const result = await geocodeCity(city);
+		if (result) return { result, source: 'nominatim' };
+	}
+
+	return null;
+}
+
 export const POST: RequestHandler = async ({ request }) => {
 	const apiToken = env.TARGET_PIPEDRIVE_API_TOKEN;
 	if (!apiToken) {
@@ -94,6 +134,8 @@ export const POST: RequestHandler = async ({ request }) => {
 	} catch {
 		// Empty body is fine
 	}
+
+	const googleApiKey = env.GOOGLE_MAPS_API_KEY || null;
 
 	const client = new PipedriveClient({ apiToken });
 	const distanceFieldKey = await getDistanceFieldKey(client);
@@ -113,12 +155,19 @@ export const POST: RequestHandler = async ({ request }) => {
 				// Fetch all organizations
 				send({ type: 'status', message: 'Fetching organizations from Pipedrive...' });
 				const allOrgs = await client.getAllOrganizations();
-				send({ type: 'status', message: `Found ${allOrgs.length} organizations`, total: allOrgs.length });
+				send({
+					type: 'status',
+					message: `Found ${allOrgs.length} organizations`,
+					total: allOrgs.length,
+					googleMaps: !!googleApiKey,
+					cacheOnly
+				});
 
 				let updated = 0;
 				let skipped = 0;
 				let noAddress = 0;
 				let geocodeFailed = 0;
+				const sourceCounts = { cache: 0, google: 0, nominatim: 0 };
 
 				for (let i = 0; i < allOrgs.length; i++) {
 					const org = allOrgs[i];
@@ -129,7 +178,7 @@ export const POST: RequestHandler = async ({ request }) => {
 					if (existingDistance && !forceRecalculate) {
 						skipped++;
 						if ((i + 1) % 100 === 0) {
-							send({ type: 'progress', processed: i + 1, total: allOrgs.length, updated, skipped, noAddress, geocodeFailed });
+							send({ type: 'progress', processed: i + 1, total: allOrgs.length, updated, skipped, noAddress, geocodeFailed, sources: sourceCounts });
 						}
 						continue;
 					}
@@ -137,39 +186,55 @@ export const POST: RequestHandler = async ({ request }) => {
 					const address = orgData.address as string | null;
 					const city = extractCityFromAddress(address);
 
-					if (!city) {
+					// In cacheOnly mode, only use cached cities
+					if (cacheOnly) {
+						if (!city || !isCityInCache(city)) {
+							if (city) {
+								geocodeFailed++;
+							} else {
+								noAddress++;
+							}
+							continue;
+						}
+						const geoResult = await geocodeCity(city);
+						if (!geoResult) {
+							geocodeFailed++;
+							continue;
+						}
+						const distance = Math.round(distanceToGothenburg(geoResult.latitude, geoResult.longitude));
+						await client.updateOrganization(org.id, { [distanceFieldKey]: distance });
+						updated++;
+						sourceCounts.cache++;
+						send({ type: 'updated', orgId: org.id, name: org.name, city, distance, source: 'cache' });
+						continue;
+					}
+
+					// Full mode: try all geocoding strategies
+					if (!address && !city) {
 						noAddress++;
 						continue;
 					}
 
-					// In cacheOnly mode, skip cities not in pre-populated cache
-					if (cacheOnly && !isCityInCache(city)) {
+					const geo = await geocodeOrg(address, city, googleApiKey);
+					if (!geo) {
 						geocodeFailed++;
-						send({ type: 'not_cached', orgId: org.id, name: org.name, city });
+						send({ type: 'geocode_failed', orgId: org.id, name: org.name, address: address?.substring(0, 80) });
 						continue;
 					}
 
-					const geoResult = await geocodeCity(city);
-					if (!geoResult) {
-						geocodeFailed++;
-						send({ type: 'geocode_failed', orgId: org.id, name: org.name, city });
-						continue;
-					}
-
-					const distance = Math.round(distanceToGothenburg(geoResult.latitude, geoResult.longitude));
+					const distance = Math.round(distanceToGothenburg(geo.result.latitude, geo.result.longitude));
+					sourceCounts[geo.source as keyof typeof sourceCounts]++;
 
 					await client.updateOrganization(org.id, {
 						[distanceFieldKey]: distance
 					});
 
 					updated++;
-
-					// Log every update
-					send({ type: 'updated', orgId: org.id, name: org.name, city, distance });
+					send({ type: 'updated', orgId: org.id, name: org.name, city: geo.result.city || city, distance, source: geo.source });
 
 					// Progress every 100
 					if ((i + 1) % 100 === 0) {
-						send({ type: 'progress', processed: i + 1, total: allOrgs.length, updated, skipped, noAddress, geocodeFailed });
+						send({ type: 'progress', processed: i + 1, total: allOrgs.length, updated, skipped, noAddress, geocodeFailed, sources: sourceCounts });
 					}
 				}
 
@@ -179,7 +244,8 @@ export const POST: RequestHandler = async ({ request }) => {
 					updated,
 					skipped,
 					noAddress,
-					geocodeFailed
+					geocodeFailed,
+					sources: sourceCounts
 				});
 			} catch (error) {
 				send({ type: 'error', message: error instanceof Error ? error.message : 'Unknown error' });
@@ -203,12 +269,12 @@ export const GET: RequestHandler = async () => {
 		description: 'Calculate distance to Gothenburg for all organizations',
 		options: {
 			forceRecalculate: 'boolean (default: false) - Recalculate even if distance already exists',
-			cacheOnly: 'boolean (default: false) - Only geocode cities in pre-populated cache (no Nominatim API calls)'
+			cacheOnly: 'boolean (default: false) - Only use pre-cached cities (no API calls)'
 		},
 		notes: [
 			'Streams progress as NDJSON - each line is a JSON object',
-			'No TIC or Perplexity API calls - only geocoding and Pipedrive updates',
-			'Uses pre-cached Swedish cities (50+) to minimize Nominatim API calls',
+			'Geocoding priority: 1) Pre-cached cities, 2) Google Maps API, 3) Nominatim',
+			'Google Maps requires GOOGLE_MAPS_API_KEY env var',
 			'Skips orgs that already have distance unless forceRecalculate=true'
 		]
 	});
