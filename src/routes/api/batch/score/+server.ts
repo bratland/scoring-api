@@ -16,6 +16,7 @@ import { CompanyEnricher, DEFAULT_TIC_FIELD_NAMES } from '$lib/enrichment';
 import type { TicFieldMapping } from '$lib/enrichment';
 import { PerplexityClient } from '$lib/perplexity';
 import { calculateScore, type PersonInput, type CompanyInput } from '$lib/scoring/scorer';
+import { SCORING_VERSION } from '$lib/scoring/config';
 import { json } from '@sveltejs/kit';
 
 async function getFieldMapping(client: PipedriveClient): Promise<TicFieldMapping | null> {
@@ -41,15 +42,16 @@ async function getFieldMapping(client: PipedriveClient): Promise<TicFieldMapping
 	return null;
 }
 
-async function getPersonFieldKeys(client: PipedriveClient): Promise<{ tierKey?: string; scoreKey?: string }> {
+async function getPersonFieldKeys(client: PipedriveClient): Promise<{ tierKey?: string; scoreKey?: string; versionKey?: string }> {
 	const fieldsResult = await client.getPersonFields();
 	if (!fieldsResult.success || !fieldsResult.data) return {};
 
-	const keys: { tierKey?: string; scoreKey?: string } = {};
+	const keys: { tierKey?: string; scoreKey?: string; versionKey?: string } = {};
 	for (const field of fieldsResult.data) {
 		const lowerName = field.name.toLowerCase();
 		if (lowerName === 'lead tier') keys.tierKey = field.key;
 		if (lowerName === 'lead score') keys.scoreKey = field.key;
+		if (lowerName === 'scoring version') keys.versionKey = field.key;
 	}
 	return keys;
 }
@@ -260,10 +262,14 @@ export const POST: RequestHandler = async ({ request }) => {
 
 						// Update Pipedrive
 						if (personFieldKeys.tierKey && personFieldKeys.scoreKey) {
-							await client.updatePerson(person.id, {
+							const updates: Record<string, unknown> = {
 								[personFieldKeys.tierKey]: scoreResult.tier,
 								[personFieldKeys.scoreKey]: Math.round(scoreResult.combined_score)
-							});
+							};
+							if (personFieldKeys.versionKey) {
+								updates[personFieldKeys.versionKey] = SCORING_VERSION;
+							}
+							await client.updatePerson(person.id, updates);
 						}
 
 						tierCounts[scoreResult.tier]++;

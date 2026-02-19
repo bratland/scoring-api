@@ -6,6 +6,7 @@ import { TicClient } from '$lib/tic';
 import { CompanyEnricher, DEFAULT_TIC_FIELD_NAMES } from '$lib/enrichment';
 import { PerplexityClient } from '$lib/perplexity';
 import { calculateScore, type PersonInput, type CompanyInput } from '$lib/scoring/scorer';
+import { SCORING_VERSION } from '$lib/scoring/config';
 import type { TicFieldMapping } from '$lib/enrichment';
 
 interface ScorePipedriveRequest {
@@ -13,9 +14,9 @@ interface ScorePipedriveRequest {
 }
 
 // Field keys cache (populated on first request)
-let cachedPersonFieldKeys: { tierKey?: string; scoreKey?: string } | null = null;
+let cachedPersonFieldKeys: { tierKey?: string; scoreKey?: string; versionKey?: string } | null = null;
 
-async function getPersonFieldKeys(client: PipedriveClient): Promise<{ tierKey?: string; scoreKey?: string }> {
+async function getPersonFieldKeys(client: PipedriveClient): Promise<{ tierKey?: string; scoreKey?: string; versionKey?: string }> {
 	if (cachedPersonFieldKeys) return cachedPersonFieldKeys;
 
 	const fieldsResult = await client.getPersonFields();
@@ -23,11 +24,12 @@ async function getPersonFieldKeys(client: PipedriveClient): Promise<{ tierKey?: 
 		return {};
 	}
 
-	const keys: { tierKey?: string; scoreKey?: string } = {};
+	const keys: { tierKey?: string; scoreKey?: string; versionKey?: string } = {};
 	for (const field of fieldsResult.data) {
 		const lowerName = field.name.toLowerCase();
 		if (lowerName === 'lead tier') keys.tierKey = field.key;
 		if (lowerName === 'lead score') keys.scoreKey = field.key;
+		if (lowerName === 'scoring version') keys.versionKey = field.key;
 	}
 
 	cachedPersonFieldKeys = keys;
@@ -269,6 +271,9 @@ export const POST: RequestHandler = async ({ request }) => {
 				[fieldKeys.tierKey]: scoreResult.tier,
 				[fieldKeys.scoreKey]: Math.round(scoreResult.combined_score)
 			};
+			if (fieldKeys.versionKey) {
+				updates[fieldKeys.versionKey] = SCORING_VERSION;
+			}
 			updateResult = await client.updatePerson(body.person_id, updates);
 		}
 

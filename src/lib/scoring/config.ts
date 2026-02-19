@@ -3,6 +3,9 @@
  * Adjust weights and thresholds to fine-tune the scoring model
  */
 
+// Bump this when algorithm logic or config values change
+export const SCORING_VERSION = '1.0.0';
+
 export const SCORING_CONFIG = {
 	// Weight distribution between person and company scores
 	weights: {
