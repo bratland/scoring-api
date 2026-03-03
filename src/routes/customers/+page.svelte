@@ -36,10 +36,10 @@
 				total = result.originalTotal;
 				applyFilters();
 			} else {
-				error = result.error || 'Kunde inte hamta organisationer';
+				error = result.error || 'Kunde inte hämta organisationer';
 			}
 		} catch (e) {
-			error = 'Natverksfel vid hamtning av organisationer';
+			error = 'Nätverksfel vid hämtning av organisationer';
 		} finally {
 			isLoading = false;
 		}
@@ -134,7 +134,7 @@
 					<input
 						type="text"
 						bind:value={searchQuery}
-						placeholder="Sok pa namn, ID eller adress..."
+						placeholder="Sök på namn, ID eller adress..."
 						class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
 					/>
 				</div>
@@ -182,7 +182,7 @@
 								Adress
 							</th>
 							<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-								Agare
+								Ägare
 							</th>
 							<th
 								class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
@@ -196,7 +196,7 @@
 								</div>
 							</th>
 							<th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-								Atgarder
+								Åtgärder
 							</th>
 						</tr>
 					</thead>
@@ -230,7 +230,7 @@
 						{:else}
 							<tr>
 								<td colspan="6" class="px-6 py-12 text-center text-gray-500">
-									{searchQuery ? 'Inga organisationer matchar sokningen' : 'Inga organisationer hittades'}
+									{searchQuery ? 'Inga organisationer matchar sökningen' : 'Inga organisationer hittades'}
 								</td>
 							</tr>
 						{/each}

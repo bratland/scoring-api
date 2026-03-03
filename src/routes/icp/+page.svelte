@@ -72,23 +72,23 @@
 				message = { type: 'error', text: data.error || 'Kunde inte spara' };
 			}
 		} catch (error) {
-			message = { type: 'error', text: 'Natverk fel' };
+			message = { type: 'error', text: 'Nätverksfel' };
 		} finally {
 			isSaving = false;
 		}
 	}
 
 	async function resetConfig() {
-		if (!confirm('Aterstall till standardvarden?')) return;
+		if (!confirm('Återställ till standardvärden?')) return;
 
 		try {
 			const response = await fetch('/api/icp', { method: 'DELETE' });
 			if (response.ok) {
 				await loadConfig();
-				message = { type: 'success', text: 'Aterstalldes till standard' };
+				message = { type: 'success', text: 'Återställdes till standard' };
 			}
 		} catch (error) {
-			message = { type: 'error', text: 'Kunde inte aterstalla' };
+			message = { type: 'error', text: 'Kunde inte återställa' };
 		}
 	}
 
@@ -147,13 +147,13 @@
 				{#if lastModified}
 					<p class="text-sm text-gray-500 mt-1">Senast sparad: {new Date(lastModified).toLocaleString('sv-SE')}</p>
 				{:else if source === 'default'}
-					<p class="text-sm text-amber-600 mt-1">Anvander standardvarden</p>
+					<p class="text-sm text-amber-600 mt-1">Använder standardvärden</p>
 				{/if}
 			</div>
 			<div class="flex gap-2">
 				<a href="/" class="btn-secondary">Tillbaka</a>
 				<button onclick={resetConfig} class="px-4 py-2 text-red-600 hover:text-red-800 border border-red-300 rounded-dw">
-					Aterstall
+					Återställ
 				</button>
 				<button
 					onclick={saveConfig}
@@ -210,10 +210,10 @@
 					<!-- Main Weights -->
 					<div class="card p-6">
 						<h2 class="text-lg font-semibold mb-4">Huvudvikter</h2>
-						<p class="text-sm text-gray-500 mb-4">Hur mycket varje del vager i total-poangen. Maste summera till 100%.</p>
+						<p class="text-sm text-gray-500 mb-4">Hur mycket varje del väger i totalpoängen. Måste summera till 100%.</p>
 						<div class="grid grid-cols-2 gap-6">
 							<div>
-								<label class="block text-sm font-medium text-gray-700 mb-2">Person-poang</label>
+								<label class="block text-sm font-medium text-gray-700 mb-2">Personpoäng</label>
 								<div class="flex items-center gap-3">
 									<input
 										type="range"
@@ -232,7 +232,7 @@
 								</div>
 							</div>
 							<div>
-								<label class="block text-sm font-medium text-gray-700 mb-2">Foretags-poang</label>
+								<label class="block text-sm font-medium text-gray-700 mb-2">Företagspoäng</label>
 								<div class="flex items-center gap-3">
 									<input
 										type="range"
@@ -255,7 +255,7 @@
 
 					<!-- Tier Thresholds -->
 					<div class="card p-6">
-						<h2 class="text-lg font-semibold mb-4">Tier-trangsklar</h2>
+						<h2 class="text-lg font-semibold mb-4">Tier-trösklar</h2>
 						<div class="grid grid-cols-3 gap-6">
 							<div class="p-4 bg-yellow-50 rounded-lg border border-yellow-200">
 								<label class="block text-sm font-medium text-yellow-800 mb-2">GOLD (minst)</label>
@@ -286,8 +286,8 @@
 
 					<!-- Person Factors -->
 					<div class="card p-6">
-						<h2 class="text-lg font-semibold mb-4">Person-faktorer</h2>
-						<p class="text-sm text-gray-500 mb-4">Vikter inom person-poangen. Maste summera till 100%.</p>
+						<h2 class="text-lg font-semibold mb-4">Personfaktorer</h2>
+						<p class="text-sm text-gray-500 mb-4">Vikter inom personpoängen. Måste summera till 100%.</p>
 						<div class="space-y-4">
 							<div>
 								<label class="block text-sm font-medium text-gray-700 mb-2">Roll/Funktion ({Math.round(config.personFactors.role * 100)}%)</label>
@@ -317,17 +317,17 @@
 
 					<!-- Company Factors -->
 					<div class="card p-6">
-						<h2 class="text-lg font-semibold mb-4">Foretags-faktorer</h2>
-						<p class="text-sm text-gray-500 mb-4">Vikter inom foretags-poangen. Maste summera till 100%.</p>
+						<h2 class="text-lg font-semibold mb-4">Företagsfaktorer</h2>
+						<p class="text-sm text-gray-500 mb-4">Vikter inom företagspoängen. Måste summera till 100%.</p>
 						<div class="space-y-4">
 							<div>
-								<label class="block text-sm font-medium text-gray-700 mb-2">Omsattning ({Math.round(config.companyFactors.revenue * 100)}%)</label>
+								<label class="block text-sm font-medium text-gray-700 mb-2">Omsättning ({Math.round(config.companyFactors.revenue * 100)}%)</label>
 								<input type="range" min="0" max="100" step="5" value={config.companyFactors.revenue * 100}
 									oninput={(e) => config!.companyFactors.revenue = Number(e.currentTarget.value) / 100}
 									class="w-full" />
 							</div>
 							<div>
-								<label class="block text-sm font-medium text-gray-700 mb-2">Tillvaxt ({Math.round(config.companyFactors.growth * 100)}%)</label>
+								<label class="block text-sm font-medium text-gray-700 mb-2">Tillväxt ({Math.round(config.companyFactors.growth * 100)}%)</label>
 								<input type="range" min="0" max="100" step="5" value={config.companyFactors.growth * 100}
 									oninput={(e) => config!.companyFactors.growth = Number(e.currentTarget.value) / 100}
 									class="w-full" />
@@ -339,7 +339,7 @@
 									class="w-full" />
 							</div>
 							<div>
-								<label class="block text-sm font-medium text-gray-700 mb-2">Avstand ({Math.round(config.companyFactors.distance * 100)}%)</label>
+								<label class="block text-sm font-medium text-gray-700 mb-2">Avstånd ({Math.round(config.companyFactors.distance * 100)}%)</label>
 								<input type="range" min="0" max="100" step="5" value={config.companyFactors.distance * 100}
 									oninput={(e) => config!.companyFactors.distance = Number(e.currentTarget.value) / 100}
 									class="w-full" />
@@ -366,8 +366,8 @@
 				<div class="space-y-6">
 					<!-- Role Scores -->
 					<div class="card p-6">
-						<h2 class="text-lg font-semibold mb-4">Roll-poang</h2>
-						<p class="text-sm text-gray-500 mb-4">Hogre poang = mer vardefull roll for ICP.</p>
+						<h2 class="text-lg font-semibold mb-4">Rollpoäng</h2>
+						<p class="text-sm text-gray-500 mb-4">Högre poäng = mer värdefull roll för ICP.</p>
 
 						<div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
 							{#each Object.entries(config.roleScores).sort((a, b) => b[1] - a[1]) as [role, score]}
@@ -404,7 +404,7 @@
 								class="w-20 px-3 py-2 border rounded-lg"
 							/>
 							<button onclick={addRole} class="btn-primary">
-								Lagg till
+								Lägg till
 							</button>
 						</div>
 					</div>
@@ -418,11 +418,11 @@
 					<div class="card p-6">
 						<div class="flex justify-between items-center mb-4">
 							<div>
-								<h2 class="text-lg font-semibold">Bransch-nivaer</h2>
-								<p class="text-sm text-gray-500 mt-1">Foretag matchas mot den forsta nivan dar branschen passar. Hogre niva = hogre poang.</p>
+								<h2 class="text-lg font-semibold">Branschnivåer</h2>
+								<p class="text-sm text-gray-500 mt-1">Företag matchas mot den första nivån där branschen passar. Högre nivå = högre poäng.</p>
 							</div>
 							<button onclick={addIndustryTier} class="btn-secondary text-sm">
-								+ Lagg till niva
+								+ Lägg till nivå
 							</button>
 						</div>
 
@@ -436,7 +436,7 @@
 											class="font-semibold text-sm bg-transparent border-b border-dashed border-gray-400 px-1 py-0.5 w-32"
 										/>
 										<div class="flex items-center gap-2">
-											<label class="text-sm text-gray-600">Poang:</label>
+											<label class="text-sm text-gray-600">Poäng:</label>
 											<input
 												type="number"
 												min="0"
@@ -447,7 +447,7 @@
 										</div>
 										{#if config.industryTiers.length > 1}
 											<button onclick={() => removeIndustryTier(tierIndex)} class="ml-auto text-red-500 hover:text-red-700 text-sm">
-												Ta bort niva
+												Ta bort nivå
 											</button>
 										{/if}
 									</div>
@@ -472,12 +472,12 @@
 										<input
 											type="text"
 											bind:value={newIndustries[tierIndex]}
-											placeholder="Lagg till bransch..."
+											placeholder="Lägg till bransch..."
 											class="flex-1 px-3 py-1.5 border rounded-lg text-sm"
 											onkeydown={(e) => e.key === 'Enter' && addIndustryToTier(tierIndex)}
 										/>
 										<button onclick={() => addIndustryToTier(tierIndex)} class="px-3 py-1.5 bg-gray-700 text-white rounded-lg text-sm hover:bg-gray-800">
-											Lagg till
+											Lägg till
 										</button>
 									</div>
 								</div>
@@ -487,8 +487,8 @@
 
 					<!-- Default score for unmatched industries -->
 					<div class="card p-6">
-						<h3 class="text-md font-semibold mb-2">Ovriga branscher</h3>
-						<p class="text-sm text-gray-500 mb-3">Poang for foretag som inte matchar nagon niva ovan.</p>
+						<h3 class="text-md font-semibold mb-2">Övriga branscher</h3>
+						<p class="text-sm text-gray-500 mb-3">Poäng för företag som inte matchar någon nivå ovan.</p>
 						<div class="flex items-center gap-3">
 							<input
 								type="range"
@@ -509,7 +509,7 @@
 				<div class="space-y-6">
 					<!-- Revenue Tiers -->
 					<div class="card p-6">
-						<h2 class="text-lg font-semibold mb-4">Omsattnings-nivaer (SEK)</h2>
+						<h2 class="text-lg font-semibold mb-4">Omsättningsnivåer (SEK)</h2>
 						<div class="space-y-3">
 							{#each config.revenueTiers as tier, i}
 								<div class="flex items-center gap-4">
@@ -529,7 +529,7 @@
 
 					<!-- Growth Tiers -->
 					<div class="card p-6">
-						<h2 class="text-lg font-semibold mb-4">Tillvaxt-nivaer (CAGR)</h2>
+						<h2 class="text-lg font-semibold mb-4">Tillväxtnivåer (CAGR)</h2>
 						<div class="space-y-3">
 							{#each config.growthTiers as tier, i}
 								<div class="flex items-center gap-4">
@@ -551,7 +551,7 @@
 
 					<!-- Engagement Tiers -->
 					<div class="card p-6">
-						<h2 class="text-lg font-semibold mb-4">Engagement-nivaer (aktiviteter/90 dagar)</h2>
+						<h2 class="text-lg font-semibold mb-4">Engagemangsnivåer (aktiviteter/90 dagar)</h2>
 						<div class="space-y-3">
 							{#each config.engagementTiers as tier, i}
 								<div class="flex items-center gap-4">
@@ -571,7 +571,7 @@
 
 					<!-- Distance Tiers -->
 					<div class="card p-6">
-						<h2 class="text-lg font-semibold mb-4">Avstands-nivaer (km fran Goteborg)</h2>
+						<h2 class="text-lg font-semibold mb-4">Avståndsnivåer (km från Göteborg)</h2>
 						<div class="space-y-3">
 							{#each config.distanceTiers as tier, i}
 								<div class="flex items-center gap-4">

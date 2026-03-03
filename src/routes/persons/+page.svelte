@@ -49,10 +49,10 @@
 				total = result.originalTotal;
 				applyFilters();
 			} else {
-				error = result.error || 'Kunde inte hamta personer';
+				error = result.error || 'Kunde inte hämta personer';
 			}
 		} catch (e) {
-			error = 'Natverksfel vid hamtning av personer';
+			error = 'Nätverksfel vid hämtning av personer';
 		} finally {
 			isLoading = false;
 		}
@@ -145,7 +145,7 @@
 					{#if !isLoading}
 						Visar {filteredPersons.length} av {total} personer
 						{#if orgFilter}
-							<span class="text-blue-600">(filtrerat pa organisation)</span>
+							<span class="text-blue-600">(filtrerat på organisation)</span>
 						{/if}
 					{:else}
 						Laddar...
@@ -176,7 +176,7 @@
 					<input
 						type="text"
 						bind:value={searchQuery}
-						placeholder="Sok pa namn, ID eller e-post..."
+						placeholder="Sök på namn, ID eller e-post..."
 						class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
 					/>
 				</div>
@@ -238,10 +238,10 @@
 								Organisation
 							</th>
 							<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-								Agare
+								Ägare
 							</th>
 							<th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-								Atgarder
+								Åtgärder
 							</th>
 						</tr>
 					</thead>
@@ -277,7 +277,7 @@
 						{:else}
 							<tr>
 								<td colspan="7" class="px-6 py-12 text-center text-gray-500">
-									{searchQuery ? 'Inga personer matchar sokningen' : 'Inga personer hittades'}
+									{searchQuery ? 'Inga personer matchar sökningen' : 'Inga personer hittades'}
 								</td>
 							</tr>
 						{/each}

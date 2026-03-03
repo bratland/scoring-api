@@ -25,10 +25,10 @@
 			if (result.success) {
 				overview = result.data;
 			} else {
-				error = result.error || 'Failed to load overview';
+				error = result.error || 'Kunde inte ladda översikt';
 			}
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to load overview';
+			error = err instanceof Error ? err.message : 'Kunde inte ladda översikt';
 		}
 	}
 
@@ -39,10 +39,10 @@
 			if (result.success) {
 				salesData = result.data;
 			} else {
-				error = result.error || 'Failed to load sales data';
+				error = result.error || 'Kunde inte ladda säljdata';
 			}
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to load sales data';
+			error = err instanceof Error ? err.message : 'Kunde inte ladda säljdata';
 		}
 	}
 

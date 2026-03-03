@@ -151,10 +151,10 @@
 					}
 				}
 			} else {
-				error = result.error || 'Kunde inte hamta person';
+				error = result.error || 'Kunde inte hämta person';
 			}
 		} catch (e) {
-			error = 'Natverksfel vid hamtning av person';
+			error = 'Nätverksfel vid hämtning av person';
 		} finally {
 			isLoading = false;
 		}
@@ -184,7 +184,7 @@
 
 			scoringResult = await response.json();
 		} catch (e) {
-			error = 'Kunde inte kora scoring';
+			error = 'Kunde inte köra scoring';
 		} finally {
 			isScoring = false;
 		}
@@ -292,7 +292,7 @@
 						</div>
 						{#if personRole && personRole.confidence !== 'none'}
 							<div>
-								<dt class="text-sm text-gray-500">Roll (via websokning)</dt>
+								<dt class="text-sm text-gray-500">Roll (via webbsökning)</dt>
 								<dd class="font-medium">
 									{personRole.title || personRole.role}
 									<span class="ml-2 text-xs px-2 py-0.5 rounded-full {
@@ -300,7 +300,7 @@
 										personRole.confidence === 'medium' ? 'bg-yellow-100 text-yellow-700' :
 										'bg-gray-100 text-gray-600'
 									}">
-										{personRole.confidence === 'high' ? 'Hog' : personRole.confidence === 'medium' ? 'Medel' : 'Lag'} konfidens
+										{personRole.confidence === 'high' ? 'Hög' : personRole.confidence === 'medium' ? 'Medel' : 'Låg'} konfidens
 									</span>
 								</dd>
 							</div>
@@ -339,13 +339,13 @@
 								{/if}
 								{#if enrichedCompany.revenue}
 									<div class="flex justify-between">
-										<dt class="text-sm text-gray-500">Omsattning</dt>
+										<dt class="text-sm text-gray-500">Omsättning</dt>
 										<dd class="text-sm font-medium">{formatSEK(enrichedCompany.revenue)}</dd>
 									</div>
 								{/if}
 								{#if enrichedCompany.cagr3y !== undefined}
 									<div class="flex justify-between">
-										<dt class="text-sm text-gray-500">Tillvaxt (CAGR 3ar)</dt>
+										<dt class="text-sm text-gray-500">Tillväxt (CAGR 3 år)</dt>
 										<dd class="text-sm font-medium {enrichedCompany.cagr3y >= 0 ? 'text-green-600' : 'text-red-600'}">{(enrichedCompany.cagr3y * 100).toFixed(1)}%</dd>
 									</div>
 								{/if}
@@ -357,7 +357,7 @@
 								{/if}
 								{#if enrichedCompany.employees}
 									<div class="flex justify-between">
-										<dt class="text-sm text-gray-500">Anstallda</dt>
+										<dt class="text-sm text-gray-500">Anställda</dt>
 										<dd class="text-sm font-medium">{enrichedCompany.employees}</dd>
 									</div>
 								{/if}
@@ -369,12 +369,12 @@
 								{/if}
 								{#if enrichedCompany.distanceToGothenburg !== undefined}
 									<div class="flex justify-between">
-										<dt class="text-sm text-gray-500">Avstand till GBG</dt>
+										<dt class="text-sm text-gray-500">Avstånd till GBG</dt>
 										<dd class="text-sm font-medium">{Math.round(enrichedCompany.distanceToGothenburg)} km</dd>
 									</div>
 								{/if}
 								<div class="flex justify-between text-xs text-gray-400 mt-2 pt-2 border-t">
-									<span>Kalla: {enrichedCompany.dataSource}</span>
+									<span>Källa: {enrichedCompany.dataSource}</span>
 									{#if enrichedCompany.lastUpdated}
 										<span>Uppdaterad: {new Date(enrichedCompany.lastUpdated).toLocaleDateString('sv-SE')}</span>
 									{/if}
@@ -392,7 +392,7 @@
 			<!-- Scoring Section -->
 			<div class="mt-6 bg-white shadow rounded-lg p-6">
 				<h2 class="text-lg font-semibold mb-4">Testa Scoring</h2>
-				<p class="text-sm text-gray-500 mb-4">Fyll i eller justera vardena nedan och klicka "Kor scoring"</p>
+				<p class="text-sm text-gray-500 mb-4">Fyll i eller justera värdena nedan och klicka "Kör scoring"</p>
 
 				<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
 					<!-- Person inputs -->
@@ -403,7 +403,7 @@
 							bind:value={functions}
 							class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
 						>
-							<option value="">Valj roll...</option>
+							<option value="">Välj roll...</option>
 							{#each functionOptions as opt}
 								<option value={opt}>{opt}</option>
 							{/each}
@@ -417,7 +417,7 @@
 							bind:value={relationshipStrength}
 							class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
 						>
-							<option value="">Valj...</option>
+							<option value="">Välj...</option>
 							{#each relationshipOptions as opt}
 								<option value={opt}>{opt}</option>
 							{/each}
@@ -437,7 +437,7 @@
 
 					<!-- Company inputs -->
 					<div>
-						<label for="revenue" class="block text-sm font-medium text-gray-700 mb-1">Omsattning (SEK)</label>
+						<label for="revenue" class="block text-sm font-medium text-gray-700 mb-1">Omsättning (SEK)</label>
 						<input
 							id="revenue"
 							type="number"
@@ -448,13 +448,13 @@
 					</div>
 
 					<div>
-						<label for="cagr" class="block text-sm font-medium text-gray-700 mb-1">Tillvaxt (CAGR)</label>
+						<label for="cagr" class="block text-sm font-medium text-gray-700 mb-1">Tillväxt (CAGR)</label>
 						<input
 							id="cagr"
 							type="number"
 							step="0.01"
 							bind:value={cagr}
-							placeholder="t.ex. 0.15 for 15%"
+							placeholder="t.ex. 0.15 för 15%"
 							class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
 						/>
 					</div>
@@ -471,12 +471,12 @@
 					</div>
 
 					<div>
-						<label for="distance" class="block text-sm font-medium text-gray-700 mb-1">Avstand (km)</label>
+						<label for="distance" class="block text-sm font-medium text-gray-700 mb-1">Avstånd (km)</label>
 						<input
 							id="distance"
 							type="number"
 							bind:value={distance}
-							placeholder="km fran Goteborg"
+							placeholder="km från Göteborg"
 							class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
 						/>
 					</div>
@@ -488,7 +488,7 @@
 					disabled={isScoring}
 					class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
 				>
-					{isScoring ? 'Beraknar...' : 'Kor scoring'}
+					{isScoring ? 'Beräknar...' : 'Kör scoring'}
 				</button>
 
 				<!-- Scoring Result -->
@@ -507,7 +507,7 @@
 						<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 							<!-- Person Score -->
 							<div>
-								<h3 class="font-semibold mb-2">Person-poang: {Math.round(scoringResult.person_score)}</h3>
+								<h3 class="font-semibold mb-2">Personpoäng: {Math.round(scoringResult.person_score)}</h3>
 								<div class="space-y-2">
 									<div class="flex justify-between text-sm">
 										<span>Roll</span>
@@ -526,14 +526,14 @@
 
 							<!-- Company Score -->
 							<div>
-								<h3 class="font-semibold mb-2">Foretags-poang: {Math.round(scoringResult.company_score)}</h3>
+								<h3 class="font-semibold mb-2">Företagspoäng: {Math.round(scoringResult.company_score)}</h3>
 								<div class="space-y-2">
 									<div class="flex justify-between text-sm">
-										<span>Omsattning</span>
+										<span>Omsättning</span>
 										<span class="font-medium">{scoringResult.breakdown.revenue_score}</span>
 									</div>
 									<div class="flex justify-between text-sm">
-										<span>Tillvaxt</span>
+										<span>Tillväxt</span>
 										<span class="font-medium">{scoringResult.breakdown.growth_score}</span>
 									</div>
 									<div class="flex justify-between text-sm">
@@ -541,7 +541,7 @@
 										<span class="font-medium">{scoringResult.breakdown.industry_score}</span>
 									</div>
 									<div class="flex justify-between text-sm">
-										<span>Avstand</span>
+										<span>Avstånd</span>
 										<span class="font-medium">{scoringResult.breakdown.distance_score}</span>
 									</div>
 								</div>

@@ -107,7 +107,7 @@
 				disabled={isLoading}
 				class="bg-lime text-navy font-semibold px-6 py-3 rounded-lg hover:bg-lime/90 disabled:opacity-50 transition-colors"
 			>
-				{isLoading ? 'Beraknar...' : 'Kor test'}
+				{isLoading ? 'Beräknar...' : 'Kör test'}
 			</button>
 
 			{#if testResult}
@@ -120,7 +120,7 @@
 
 		<!-- Tiers Explanation -->
 		<div class="bg-navy/[0.02] rounded-2xl p-8 mb-8">
-			<h2 class="text-2xl font-semibold text-navy mb-6">Tier-nivaer</h2>
+			<h2 class="text-2xl font-semibold text-navy mb-6">Tier-nivåer</h2>
 			<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
 				<div class="text-center p-6 bg-white rounded-xl border border-navy/10">
 					<div class="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3">
@@ -161,7 +161,7 @@
 						<span class="bg-blue text-white text-xs font-bold px-2.5 py-1 rounded">POST</span>
 						<code class="text-sm font-mono text-navy">/api/score/person</code>
 					</div>
-					<p class="text-navy/60 text-sm">Score en enskild person med foretagskontext</p>
+					<p class="text-navy/60 text-sm">Score en enskild person med företagskontext</p>
 				</div>
 				<div class="bg-white rounded-xl p-5 border border-navy/10">
 					<div class="flex items-center gap-3 mb-2">
