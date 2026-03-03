@@ -17,7 +17,6 @@ interface ICPConfig {
 	};
 	personFactors: {
 		role: number;
-		relationship: number;
 		engagement: number;
 	};
 	companyFactors: {
@@ -28,7 +27,6 @@ interface ICPConfig {
 		existingScore: number;
 	};
 	roleScores: Record<string, number>;
-	relationshipScores: Record<string, number>;
 	industryTiers: Array<{ name: string; score: number; industries: string[] }>;
 	defaultIndustryScore: number;
 	revenueTiers: Array<{ min: number; score: number }>;
@@ -90,7 +88,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			return json({ error: 'Weights must sum to 1.0' }, { status: 400 });
 		}
 
-		const personFactorSum = config.personFactors.role + config.personFactors.relationship + config.personFactors.engagement;
+		const personFactorSum = config.personFactors.role + config.personFactors.engagement;
 		if (Math.abs(personFactorSum - 1.0) > 0.01) {
 			return json({ error: 'Person factors must sum to 1.0' }, { status: 400 });
 		}

@@ -10,10 +10,9 @@
 	interface ICPConfig {
 		weights: { person: number; company: number };
 		tiers: { gold: number; silver: number };
-		personFactors: { role: number; relationship: number; engagement: number };
+		personFactors: { role: number; engagement: number };
 		companyFactors: { revenue: number; growth: number; industryFit: number; distance: number; existingScore: number };
 		roleScores: Record<string, number>;
-		relationshipScores: Record<string, number>;
 		industryTiers: IndustryTier[];
 		defaultIndustryScore: number;
 		revenueTiers: Array<{ min: number; score: number }>;
@@ -189,7 +188,7 @@
 					onclick={() => activeTab = 'roles'}
 					class={activeTab === 'roles' ? 'active' : ''}
 				>
-					Roller & Relationer
+					Roller
 				</button>
 				<button
 					onclick={() => activeTab = 'industries'}
@@ -293,23 +292,25 @@
 							<div>
 								<label class="block text-sm font-medium text-gray-700 mb-2">Roll/Funktion ({Math.round(config.personFactors.role * 100)}%)</label>
 								<input type="range" min="0" max="100" step="5" value={config.personFactors.role * 100}
-									oninput={(e) => config!.personFactors.role = Number(e.currentTarget.value) / 100}
-									class="w-full" />
-							</div>
-							<div>
-								<label class="block text-sm font-medium text-gray-700 mb-2">Relationsstyrka ({Math.round(config.personFactors.relationship * 100)}%)</label>
-								<input type="range" min="0" max="100" step="5" value={config.personFactors.relationship * 100}
-									oninput={(e) => config!.personFactors.relationship = Number(e.currentTarget.value) / 100}
+									oninput={(e) => {
+										const val = Number(e.currentTarget.value) / 100;
+										config!.personFactors.role = val;
+										config!.personFactors.engagement = 1 - val;
+									}}
 									class="w-full" />
 							</div>
 							<div>
 								<label class="block text-sm font-medium text-gray-700 mb-2">Engagement ({Math.round(config.personFactors.engagement * 100)}%)</label>
 								<input type="range" min="0" max="100" step="5" value={config.personFactors.engagement * 100}
-									oninput={(e) => config!.personFactors.engagement = Number(e.currentTarget.value) / 100}
+									oninput={(e) => {
+										const val = Number(e.currentTarget.value) / 100;
+										config!.personFactors.engagement = val;
+										config!.personFactors.role = 1 - val;
+									}}
 									class="w-full" />
 							</div>
-							<p class="text-sm {Math.abs(config.personFactors.role + config.personFactors.relationship + config.personFactors.engagement - 1) < 0.01 ? 'text-green-600' : 'text-red-600'}">
-								Summa: {Math.round((config.personFactors.role + config.personFactors.relationship + config.personFactors.engagement) * 100)}%
+							<p class="text-sm {Math.abs(config.personFactors.role + config.personFactors.engagement - 1) < 0.01 ? 'text-green-600' : 'text-red-600'}">
+								Summa: {Math.round((config.personFactors.role + config.personFactors.engagement) * 100)}%
 							</p>
 						</div>
 					</div>
@@ -408,26 +409,7 @@
 						</div>
 					</div>
 
-					<!-- Relationship Scores -->
-					<div class="card p-6">
-						<h2 class="text-lg font-semibold mb-4">Relations-styrka</h2>
-						<div class="space-y-4">
-							{#each Object.entries(config.relationshipScores) as [relation, score]}
-								<div class="flex items-center gap-4">
-									<span class="w-48 text-sm">{relation}</span>
-									<input
-										type="range"
-										min="0"
-										max="100"
-										bind:value={config.relationshipScores[relation]}
-										class="flex-1"
-									/>
-									<span class="w-12 text-right font-mono">{score}</span>
-								</div>
-							{/each}
-						</div>
 					</div>
-				</div>
 			{/if}
 
 			<!-- INDUSTRIES TAB -->
